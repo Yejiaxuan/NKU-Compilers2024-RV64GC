@@ -209,6 +209,109 @@ void yyerror(char* s, ...);
     }
     return INT_CONST;
 }
+
+
+[+-]?(
+    (
+        ([0-9]+\.[0-9]*)
+        |([0-9]*\.[0-9]+)
+    )
+    ([eE][+-]?[0-9]+)?
+    |([0-9]+[eE][+-]?[0-9]+)
+) {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+
+    const char* p = yytext;
+    int sign = 1;
+
+    // 处理正负号
+    if (*p == '+') {
+        p++;
+    } else if (*p == '-') {
+        sign = -1;
+        p++;
+    }
+
+    double integer_part = 0.0;
+    double fraction_part = 0.0;
+    int exponent = 0;
+    int exponent_sign = 1;
+    int fraction_divisor = 1;
+    int state = 0; // 0: 整数部分, 1: 小数部分, 2: 指数部分
+
+    // 解析整数部分和小数部分
+    while (*p != '\0' && *p != 'e' && *p != 'E') {
+        if (*p == '.') {
+            if (state == 0) {
+                state = 1;
+            } else {
+                yylval.error_msg = "Invalid float format";
+                return ERROR;
+            }
+            p++;
+            continue;
+        }
+        if ('0' <= *p && *p <= '9') {
+            if (state == 0) {
+                integer_part = integer_part * 10 + (*p - '0');
+            } else if (state == 1) {
+                fraction_part = fraction_part * 10 + (*p - '0');
+                fraction_divisor *= 10;
+            }
+            p++;
+        } else {
+            yylval.error_msg = "Invalid character in float";
+            return ERROR;
+        }
+    }
+
+    // 合并整数部分和小数部分
+    double result = integer_part + fraction_part / fraction_divisor;
+
+    // 解析指数部分
+    if (*p == 'e' || *p == 'E') {
+        p++;
+        // 处理指数的正负号
+        if (*p == '+') {
+            p++;
+        } else if (*p == '-') {
+            exponent_sign = -1;
+            p++;
+        }
+        // 解析指数的值
+        while (*p != '\0') {
+            if ('0' <= *p && *p <= '9') {
+                exponent = exponent * 10 + (*p - '0');
+                p++;
+            } else {
+                yylval.error_msg = "Invalid character in exponent";
+                return ERROR;
+            }
+        }
+    }
+
+    // 手动计算10的指数次方
+    double exp_result = 1.0;
+    int total_exponent = exponent_sign * exponent;
+    if (total_exponent > 0) {
+        for (int i = 0; i < total_exponent; ++i) {
+            exp_result *= 10.0;
+        }
+    } else if (total_exponent < 0) {
+        for (int i = 0; i < -total_exponent; ++i) {
+            exp_result /= 10.0;
+        }
+    }
+
+    // 计算最终结果
+    result = sign * result * exp_result;
+
+    yylval.float_token = result;
+    return FLOAT_CONST;
+}
+
+
     /*
       在词法分析中，你只需要考虑yylval的三种类型，分别为int_token, float_token, symbol_token
       之所以要定义这三种类型，是因为我们只返回这个token的类型是不够的，我们还需要知道这个token的属性
