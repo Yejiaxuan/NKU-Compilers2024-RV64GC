@@ -19,28 +19,20 @@ void yyerror(char* s, ...);
 %%
     /* TODO():增加处理注释的代码*/
     /* 处理注释的代码 */
-    "//"[^\n]* {
+"//"[^\n]* {
     col_number += strlen(yytext);  // 更新列号
     /* 忽略单行注释 */
 }
 
-    "/*" {
+"/*" {
     BEGIN(COMMENT);
     col_number += 2; // 计入 '/*' 的两个字符
 }
 
 <COMMENT>{
-    "*/" {
-        BEGIN(INITIAL);
-        col_number += 2; // 计入 '*/' 的两个字符
-    }
-    "\n" {
-        ++line_number;
-        col_number = 0;
-    }
-    [^\n]+ {
-        col_number += strlen(yytext);
-    }
+    "*/"   { BEGIN(INITIAL); col_number += 2; } // 计入 '*/' 的两个字符
+    "\n"   { ++line_number; col_number = 0; }
+    .      { col_number += strlen(yytext); }
     <<EOF>> {
         BEGIN(INITIAL);
         yylval.error_msg = "EOF in comment";
@@ -88,36 +80,6 @@ void yyerror(char* s, ...);
     return OR;
 }
 
-"+=" {
-    cur_col_number = col_number;
-    col_number += strlen(yytext);
-    return ADDASSIGN;
-}
-
-"-=" {
-    cur_col_number = col_number;
-    col_number += strlen(yytext);
-    return SUBASSIGN;
-} 
-
-"*=" {
-    cur_col_number = col_number;
-    col_number += strlen(yytext);
-    return MULASSIGN;
-}  
-
-"/=" {
-    cur_col_number = col_number;
-    col_number += strlen(yytext);
-    return DIVASSIGN;
-}  
-        
-"%=" {
-    cur_col_number = col_number;
-    col_number += strlen(yytext);
-    return MODASSIGN;
-}  
-
 "const" {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -141,12 +103,6 @@ void yyerror(char* s, ...);
     col_number += strlen(yytext);
     return WHILE;
 }
-
-"for" {
-    cur_col_number = col_number;
-    col_number += strlen(yytext);
-    return FOR;
-}   
 
 "void" {
     cur_col_number = col_number;
@@ -211,14 +167,7 @@ void yyerror(char* s, ...);
 }
 
 
-[+-]?(
-    (
-        ([0-9]+\.[0-9]*)
-        |([0-9]*\.[0-9]+)
-    )
-    ([eE][+-]?[0-9]+)?
-    |([0-9]+[eE][+-]?[0-9]+)
-) {
+[+-]?(([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+) {
     cur_col_number = col_number;
     col_number += strlen(yytext);
 
