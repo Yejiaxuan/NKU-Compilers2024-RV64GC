@@ -13,6 +13,9 @@ extern IdTable id_table;
 void yyerror(char* s, ...);
 %}
 
+%x COMMENT
+
+
 %%
     /* TODO():增加处理注释的代码*/
     /* 处理注释的代码 */
@@ -21,38 +24,165 @@ void yyerror(char* s, ...);
     /* 忽略单行注释 */
 }
 
-    "/*"([^*]*\*+)*([^/*][^*]*\*+)*/ {
-    int len = strlen(yytext);
-    for (int i = 0; i < len; ++i) {
-        if (yytext[i] == '\n') {
-            ++line_number;      // 更新行号
-            col_number = 0;     // 重置列号
-        } else {
-            ++col_number;       // 更新列号
-        }
+    "/*" {
+    BEGIN(COMMENT);
+    col_number += 2; // 计入 '/*' 的两个字符
+}
+
+<COMMENT>{
+    "*/" {
+        BEGIN(INITIAL);
+        col_number += 2; // 计入 '*/' 的两个字符
     }
-    /* 忽略多行注释 */
+    "\n" {
+        ++line_number;
+        col_number = 0;
+    }
+    [^\n]+ {
+        col_number += strlen(yytext);
+    }
+    <<EOF>> {
+        BEGIN(INITIAL);
+        yylval.error_msg = "EOF in comment";
+        return ERROR;
+    }
 }
 
 
 
+
     /* TODO():增加处理列号的代码(cur_col_number表示当前token开始位置, col_number表示当前token结束位置) */
-"<=" {return LEQ;}         
-">=" {return GEQ;}         
-"==" {return EQ;}        
-"!=" {return NE;}
-"&&" {return AND;}         
-"||" {return OR;}               
-"const" {return CONST;}     
-"if" {return IF;}       
-"else" {return ELSE;}  
-"while" {return WHILE;}
-"void" {return NONE_TYPE;}    
-"int" {return INT;}    
-"float" {return FLOAT;}      
-"return" {return RETURN;}    
-"break" {return BREAK;}     
-"continue" {return CONTINUE;}
+"<=" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return LEQ;
+}   
+
+">=" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return GEQ;
+}    
+
+"==" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return EQ;
+}        
+
+"!=" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return NE;
+}
+
+"&&" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return AND;
+}         
+
+"||" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return OR;
+}
+
+"+=" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return ADDASSIGN;
+}
+
+"-=" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return SUBASSIGN;
+} 
+
+"*=" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return MULASSIGN;
+}  
+
+"/=" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return DIVASSIGN;
+}  
+        
+"%=" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return MODASSIGN;
+}  
+
+"const" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return CONST;
+}     
+
+"if" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return IF;
+}       
+
+"else" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return ELSE;
+}  
+
+"while" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return WHILE;
+}
+
+"for" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return FOR;
+}   
+
+"void" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return NONE_TYPE;
+}    
+
+"int" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return INT;
+}    
+
+"float" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return FLOAT;
+}      
+
+"return" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return RETURN;
+}    
+
+"break" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return BREAK;
+}     
+
+"continue" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return CONTINUE;
+}
 
 \n {++line_number;col_number = 0;}
 
