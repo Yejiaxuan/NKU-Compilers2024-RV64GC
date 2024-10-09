@@ -16,8 +16,25 @@ void yyerror(char* s, ...);
 %%
     /* TODO():增加处理注释的代码*/
     /* 处理注释的代码 */
-    "//".* { /* 忽略单行注释 */ }
-    "/*"([^*]|\*+[^*/])*\*+/ { /* 忽略多行注释 */ }
+    "//"[^\n]* {
+    col_number += strlen(yytext);  // 更新列号
+    /* 忽略单行注释 */
+}
+
+    "/*"([^*]*\*+)*([^/*][^*]*\*+)*/ {
+    int len = strlen(yytext);
+    for (int i = 0; i < len; ++i) {
+        if (yytext[i] == '\n') {
+            ++line_number;      // 更新行号
+            col_number = 0;     // 重置列号
+        } else {
+            ++col_number;       // 更新列号
+        }
+    }
+    /* 忽略多行注释 */
+}
+
+
 
     /* TODO():增加处理列号的代码(cur_col_number表示当前token开始位置, col_number表示当前token结束位置) */
 "<=" {return LEQ;}         
