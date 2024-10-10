@@ -28,6 +28,11 @@ void yyerror(char* s, ...);
     BEGIN(COMMENT);
     col_number += 2; // 计入 '/*' 的两个字符
 }
+"*/" {
+    col_number += strlen(yytext);
+    yylval.error_msg = "unmatched */";
+    return ERROR;
+}
 
 <COMMENT>{
     "*/"   { BEGIN(INITIAL); col_number += 2; } // 计入 '*/' 的两个字符
