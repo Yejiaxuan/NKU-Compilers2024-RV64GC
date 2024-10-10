@@ -166,6 +166,46 @@ void yyerror(char* s, ...);
     return INT_CONST;
 }
 
+    /*
+      在词法分析中，你只需要考虑yylval的三种类型，分别为int_token, float_token, symbol_token
+      之所以要定义这三种类型，是因为我们只返回这个token的类型是不够的，我们还需要知道这个token的属性
+      例如我们需要知道INT_CONST具体的值是多少
+    */
+    /*TODO():参考SysY2022定义, 处理更多的词法, 如浮点数，十六进制数等*/
+
+//八进制
+0[0-7]+ {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    yylval.int_token = 0;
+    
+    // 将八进制字符串逐个字符解析成十进制整数
+    for (int i = 1; yytext[i]; i++) {  // 从下标1开始，忽略前导0
+        yylval.int_token = yylval.int_token * 8 + (yytext[i] - '0');
+    }
+
+    return INT_CONST;  // 返回整数常量类型
+}
+
+//十六进制
+0[xX][0-9a-fA-F]+ {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    yylval.int_token = 0;
+    
+    // 将十六进制字符串逐个字符解析成十进制整数
+    for (int i = 2; yytext[i]; i++) {  // 从下标2开始，忽略0x或0X前缀
+        if (yytext[i] >= '0' && yytext[i] <= '9') {
+            yylval.int_token = yylval.int_token * 16 + (yytext[i] - '0');
+        } else if (yytext[i] >= 'a' && yytext[i] <= 'f') {
+            yylval.int_token = yylval.int_token * 16 + (yytext[i] - 'a' + 10);
+        } else if (yytext[i] >= 'A' && yytext[i] <= 'F') {
+            yylval.int_token = yylval.int_token * 16 + (yytext[i] - 'A' + 10);
+        }
+    }
+
+    return INT_CONST;  // 返回整数常量类型
+}
 
 [+-]?(([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+) {
     cur_col_number = col_number;
@@ -366,15 +406,6 @@ void yyerror(char* s, ...);
     yylval.float_token = result;
     return FLOAT_CONST;
 }
-
-
-    /*
-      在词法分析中，你只需要考虑yylval的三种类型，分别为int_token, float_token, symbol_token
-      之所以要定义这三种类型，是因为我们只返回这个token的类型是不够的，我们还需要知道这个token的属性
-      例如我们需要知道INT_CONST具体的值是多少
-    */
-    /*TODO():参考SysY2022定义, 处理更多的词法, 如浮点数，十六进制数等*/
-    
 
     /*unknown tokens, return ERROR*/
 . {
