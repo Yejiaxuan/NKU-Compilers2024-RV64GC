@@ -180,6 +180,7 @@ void yyerror(char* s, ...);
     yylval.int_token = 0;
     int sign = 1;
 
+    // 检查是否是负号开头
     if (yytext[0] == '-') {
         sign = -1;
     }
@@ -190,6 +191,26 @@ void yyerror(char* s, ...);
     }
 
     yylval.int_token *= sign;
+
+    return INT_CONST;  // 返回整数常量类型
+}
+
+// 十六进制
+0[xX][0-9a-fA-F]+ {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    yylval.int_token = 0;
+    
+    // 将十六进制字符串逐个字符解析成十进制整数
+    for (int i = 2; yytext[i]; i++) {  // 从下标2开始，忽略 0x 或 0X 前缀
+        if (yytext[i] >= '0' && yytext[i] <= '9') {
+            yylval.int_token = yylval.int_token * 16 + (yytext[i] - '0');
+        } else if (yytext[i] >= 'a' && yytext[i] <= 'f') {
+            yylval.int_token = yylval.int_token * 16 + (yytext[i] - 'a' + 10);
+        } else if (yytext[i] >= 'A' && yytext[i] <= 'F') {
+            yylval.int_token = yylval.int_token * 16 + (yytext[i] - 'A' + 10);
+        }
+    }
 
     return INT_CONST;  // 返回整数常量类型
 }
