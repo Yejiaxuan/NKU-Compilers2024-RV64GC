@@ -144,10 +144,10 @@ void PrintLexerResult(std::ostream &s, char *yytext, YYSTYPE yylval, int token) 
     case ';':
         ALIGNED_FORMAT_OUTPUT("SEMICOLON", yytext, "");
         break;
-    case '>':
+    case '<':
         ALIGNED_FORMAT_OUTPUT("LESS", yytext, "");
         break;
-    case '<':
+    case '>':
         ALIGNED_FORMAT_OUTPUT("GREATER", yytext, "");
         break;
     default:
