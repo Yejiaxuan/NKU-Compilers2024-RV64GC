@@ -196,13 +196,21 @@ void yyerror(char* s, ...);
 }
 
 // 十六进制
-0[xX][0-9a-fA-F]+ {
+-?0[xX][0-9a-fA-F]+[uU]?[lL]?[lL]? {
     cur_col_number = col_number;
     col_number += strlen(yytext);
     yylval.int_token = 0;
-    
+    int sign = 1;
+
+    // 检查是否是负号开头
+    int start_idx = 0;
+    if (yytext[0] == '-') {
+        sign = -1;
+        start_idx = 1;
+    }
+
     // 将十六进制字符串逐个字符解析成十进制整数
-    for (int i = 2; yytext[i]; i++) {  // 从下标2开始，忽略 0x 或 0X 前缀
+    for (int i = start_idx + 2; yytext[i] && !isalpha(yytext[i]); i++) {  // 从0x后开始
         if (yytext[i] >= '0' && yytext[i] <= '9') {
             yylval.int_token = yylval.int_token * 16 + (yytext[i] - '0');
         } else if (yytext[i] >= 'a' && yytext[i] <= 'f') {
@@ -212,8 +220,11 @@ void yyerror(char* s, ...);
         }
     }
 
-    return INT_CONST;  // 返回整数常量类型
+    yylval.int_token *= sign;
+
+    return INT_CONST;
 }
+
 
 [+-]?(([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+) {
     cur_col_number = col_number;
