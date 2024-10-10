@@ -260,6 +260,113 @@ void yyerror(char* s, ...);
     return FLOAT_CONST;
 }
 
+[+-]?0[xX]([0-9a-fA-F]+(\.[0-9a-fA-F]*)?|\.[0-9a-fA-F]+)[pP][+-]?[0-9]+ {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+
+    const char* p = yytext;
+    int sign = 1;
+
+    // 处理正负号
+    if (*p == '+') {
+        p++;
+    } else if (*p == '-') {
+        sign = -1;
+        p++;
+    }
+
+    // 检查 '0x' 或 '0X' 前缀
+    if (*p == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p += 2;
+    } else {
+        yylval.error_msg = "Invalid hexadecimal float format";
+        return ERROR;
+    }
+
+    unsigned long long integer_part = 0;
+    unsigned long long fraction_part = 0;
+    int fraction_digits = 0;
+    int exponent = 0;
+    int exponent_sign = 1;
+    int state = 0; // 0: 整数部分, 1: 小数部分
+
+    // 解析整数部分和小数部分
+    while (*p != '\0' && *p != 'p' && *p != 'P') {
+        if (*p == '.') {
+            if (state == 0) {
+                state = 1;
+            } else {
+                yylval.error_msg = "Invalid hexadecimal float format";
+                return ERROR;
+            }
+            p++;
+            continue;
+        }
+        if (isxdigit(*p)) {
+            int digit = 0;
+            if ('0' <= *p && *p <= '9') {
+                digit = *p - '0';
+            } else if ('a' <= *p && *p <= 'f') {
+                digit = 10 + (*p - 'a');
+            } else if ('A' <= *p && *p <= 'F') {
+                digit = 10 + (*p - 'A');
+            }
+            if (state == 0) {
+                integer_part = integer_part * 16 + digit;
+            } else if (state == 1) {
+                fraction_part = fraction_part * 16 + digit;
+                fraction_digits++;
+            }
+            p++;
+        } else {
+            yylval.error_msg = "Invalid character in hexadecimal float";
+            return ERROR;
+        }
+    }
+
+    // 计算尾数
+    double mantissa = (double)integer_part;
+    if (fraction_digits > 0) {
+        mantissa += fraction_part / pow(16.0, fraction_digits);
+    }
+
+    // 解析指数部分
+    if (*p == 'p' || *p == 'P') {
+        p++;
+        // 处理指数的正负号
+        if (*p == '+') {
+            p++;
+        } else if (*p == '-') {
+            exponent_sign = -1;
+            p++;
+        }
+        if (!isdigit(*p)) {
+            yylval.error_msg = "Invalid exponent in hexadecimal float";
+            return ERROR;
+        }
+        // 解析指数的值
+        while (*p != '\0') {
+            if (isdigit(*p)) {
+                exponent = exponent * 10 + (*p - '0');
+                p++;
+            } else {
+                yylval.error_msg = "Invalid character in exponent";
+                return ERROR;
+            }
+        }
+    } else {
+        yylval.error_msg = "Missing exponent in hexadecimal float";
+        return ERROR;
+    }
+
+    // 计算最终结果
+    int total_exponent = exponent_sign * exponent;
+    double result = sign * mantissa * pow(2.0, total_exponent);
+
+    yylval.float_token = result;
+    return FLOAT_CONST;
+}
+
 
     /*
       在词法分析中，你只需要考虑yylval的三种类型，分别为int_token, float_token, symbol_token
