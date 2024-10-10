@@ -40,9 +40,6 @@ void yyerror(char* s, ...);
     }
 }
 
-
-
-
     /* TODO():增加处理列号的代码(cur_col_number表示当前token开始位置, col_number表示当前token结束位置) */
 "<=" {
     cur_col_number = col_number;
@@ -174,43 +171,27 @@ void yyerror(char* s, ...);
     /*TODO():参考SysY2022定义, 处理更多的词法, 如浮点数，十六进制数等*/
 
 //八进制
--?0[0-7]+[uU]?[lL]?[lL]? {
+0[0-7]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
     yylval.int_token = 0;
-    int sign = 1;
-
-    // 检查是否是负号开头
-    if (yytext[0] == '-') {
-        sign = -1;
-    }
 
     // 将八进制字符串逐个字符解析成十进制整数
-    for (int i = 1; yytext[i] && !isalpha(yytext[i]); i++) {  // 从下标1开始，忽略前导0
+    for (int i = 1; yytext[i]; i++) {  // 从下标1开始，忽略前导0
         yylval.int_token = yylval.int_token * 8 + (yytext[i] - '0');
     }
-
-    yylval.int_token *= sign;
 
     return INT_CONST;  // 返回整数常量类型
 }
 
 // 十六进制
--?0[xX][0-9a-fA-F]+[uU]?[lL]?[lL]? {
+0[xX][0-9a-fA-F]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
     yylval.int_token = 0;
-    int sign = 1;
-
-    // 检查是否是负号开头
-    int start_idx = 0;
-    if (yytext[0] == '-') {
-        sign = -1;
-        start_idx = 1;
-    }
 
     // 将十六进制字符串逐个字符解析成十进制整数
-    for (int i = start_idx + 2; yytext[i] && !isalpha(yytext[i]); i++) {  // 从0x后开始
+    for (int i = 2; yytext[i]; i++) {  // 从下标2开始，忽略0x或0X前缀
         if (yytext[i] >= '0' && yytext[i] <= '9') {
             yylval.int_token = yylval.int_token * 16 + (yytext[i] - '0');
         } else if (yytext[i] >= 'a' && yytext[i] <= 'f') {
@@ -220,26 +201,14 @@ void yyerror(char* s, ...);
         }
     }
 
-    yylval.int_token *= sign;
-
-    return INT_CONST;
+    return INT_CONST;  // 返回整数常量类型
 }
 
-
-[+-]?(([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+) {
+(([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+) {
     cur_col_number = col_number;
     col_number += strlen(yytext);
 
     const char* p = yytext;
-    int sign = 1;
-
-    // 处理正负号
-    if (*p == '+') {
-        p++;
-    } else if (*p == '-') {
-        sign = -1;
-        p++;
-    }
 
     double integer_part = 0.0;
     double fraction_part = 0.0;
@@ -313,26 +282,17 @@ void yyerror(char* s, ...);
     }
 
     // 计算最终结果
-    result = sign * result * exp_result;
+    result = result * exp_result;
 
     yylval.float_token = result;
     return FLOAT_CONST;
 }
 
-[+-]?0[xX]([0-9a-fA-F]+(\.[0-9a-fA-F]*)?|\.[0-9a-fA-F]+)[pP][+-]?[0-9]+ {
+0[xX]([0-9a-fA-F]+(\.[0-9a-fA-F]*)?|\.[0-9a-fA-F]+)[pP][+-]?[0-9]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
 
     const char* p = yytext;
-    int sign = 1;
-
-    // 处理正负号
-    if (*p == '+') {
-        p++;
-    } else if (*p == '-') {
-        sign = -1;
-        p++;
-    }
 
     // 检查 '0x' 或 '0X' 前缀
     if (*p == '0' && (p[1] == 'x' || p[1] == 'X')) {
@@ -420,7 +380,7 @@ void yyerror(char* s, ...);
 
     // 计算最终结果
     int total_exponent = exponent_sign * exponent;
-    double result = sign * mantissa * pow(2.0, total_exponent);
+    double result = mantissa * pow(2.0, total_exponent);
 
     yylval.float_token = result;
     return FLOAT_CONST;
@@ -434,6 +394,3 @@ void yyerror(char* s, ...);
     return ERROR;
 }
 %%
-
-
-
