@@ -1,82 +1,202 @@
 Token           Lexeme               Property                        Line           Column         
-LEQ             <=                                                    13             0              
-GEQ             >=                                                    13             3              
-EQ              ==                                                    13             6              
-NE              !=                                                    13             9              
-AND             &&                                                    13             12             
-OR              ||                                                    13             15             
-ADD             +                                                     13             18             
-SUB             -                                                     13             20             
-MUL             *                                                     13             22             
-DIV             /                                                     13             24             
-ASSIGN          =                                                     13             26             
-LESS            <                                                     13             28             
-GREATER         >                                                     13             30             
-NOT             !                                                     13             32             
-MOD             %                                                     13             34             
-CONST           const                                                 16             0              
-IF              if                                                    16             6              
-ELSE            else                                                  16             9              
-WHILE           while                                                 16             14             
-VOID            void                                                  16             20             
-INT             int                                                   16             25             
-FLOAT           float                                                 16             29             
-RETURN          return                                                16             35             
-BREAK           break                                                 16             42             
-CONTINUE        continue                                              16             48             
-LBRACE          {                                                     19             0              
-RBRACE          }                                                     19             2              
-SEMICOLON       ;                                                     19             4              
-LPAREN          (                                                     19             6              
-RPAREN          )                                                     19             8              
-COMMA           ,                                                     19             10             
-LSQUARE         [                                                     19             12             
-RSQUARE         ]                                                     19             14             
-IDENT           var1                 var1                             22             0              
-IDENT           _var                 _var                             22             5              
-IDENT           var_name             var_name                         22             10             
-IDENT           Var123               Var123                           22             19             
-INT_CONST       0                    0                                25             0              
-INT_CONST       12345                12345                            25             2              
-INT_CONST       01234567             342391                           25             8              
-INT_CONST       0x1A3F               6719                             25             17             
-INT_CONST       0XABCDEF             11259375                         25             24             
-INT_CONST       0x0                  0                                25             33             
-FLOAT_CONST     1.23                 1.230000000000                   28             0              
-FLOAT_CONST     123.                 123.000000000000                 28             5              
-FLOAT_CONST     .456                 0.456000000000                   28             10             
-FLOAT_CONST     1e10                 10000000000.000000000000         28             15             
-FLOAT_CONST     1.23e+10             12300000000.000000000000         28             20             
-FLOAT_CONST     1.23e-10             0.000000000123                   28             29             
-FLOAT_CONST     .1e2                 10.000000000000                  28             38             
-FLOAT_CONST     1.e2                 100.000000000000                 28             43             
-FLOAT_CONST     0.0                  0.000000000000                   28             48             
-FLOAT_CONST     0x1.23p10            1164.000000000000                31             0              
-FLOAT_CONST     0X1.23P+10           1164.000000000000                31             10             
-FLOAT_CONST     0x1p-10              0.000976562500                   31             21             
-FLOAT_CONST     0x.1p2               0.250000000000                   31             29             
-ERROR           @                    @                                34             0              
-INT_CONST       0                    0                                35             0              
-IDENT           xGHI                 xGHI                             35             1              
-FLOAT_CONST     1.23                 1.230000000000                   36             0              
-FLOAT_CONST     .45                  0.450000000000                   36             4              
-FLOAT_CONST     1.2                  1.200000000000                   37             0              
-FLOAT_CONST     .3                   0.300000000000                   37             3              
-INT_CONST       1                    1                                38             0              
-IDENT           e                    e                                38             1              
-ADD             +                                                     38             2              
-INT_CONST       0x1                  1                                39             0              
-FLOAT_CONST     .23e10               2300000000.000000000000          39             3              
-INT_CONST       0x1                  1                                40             0              
-IDENT           G                    G                                40             3              
-INT_CONST       0x1                  1                                41             0              
-IDENT           p                    p                                41             3              
-ADD             +                                                     41             4              
-INT_CONST       0x1                  1                                42             0              
-.               .                                                     42             3              
-IDENT           Zp1                  Zp1                              42             4              
-IDENT           some                 some                             45             0              
-IDENT           code                 code                             45             5              
-ERROR           */                   unmatched */                     45             5              
-INT_CONST       1                    1                                48             0              
-IDENT           abc                  abc                              48             1              
+INT             int                                                   2              0              
+IDENT           decimalInt           decimalInt                       2              4              
+ASSIGN          =                                                     2              15             
+INT_CONST       123                  123                              2              17             
+SEMICOLON       ;                                                     2              20             
+INT             int                                                   3              0              
+IDENT           octalInt             octalInt                         3              4              
+ASSIGN          =                                                     3              13             
+INT_CONST       0123                 83                               3              15             
+SEMICOLON       ;                                                     3              19             
+INT             int                                                   4              0              
+IDENT           hexInt               hexInt                           4              4              
+ASSIGN          =                                                     4              11             
+INT_CONST       0x1A3F               6719                             4              13             
+SEMICOLON       ;                                                     4              19             
+FLOAT           float                                                 5              0              
+IDENT           floatNum             floatNum                         5              6              
+ASSIGN          =                                                     5              15             
+FLOAT_CONST     123.456              123.456000000000                 5              17             
+SEMICOLON       ;                                                     5              24             
+FLOAT           float                                                 6              0              
+IDENT           floatWithLeadingDot  floatWithLeadingDot              6              6              
+ASSIGN          =                                                     6              26             
+FLOAT_CONST     .456                 0.456000000000                   6              28             
+SEMICOLON       ;                                                     6              32             
+FLOAT           float                                                 7              0              
+IDENT           scientificFloat      scientificFloat                  7              6              
+ASSIGN          =                                                     7              22             
+FLOAT_CONST     1.23e-4              0.000123000000                   7              24             
+SEMICOLON       ;                                                     7              31             
+FLOAT           float                                                 8              0              
+IDENT           hexFloat             hexFloat                         8              6              
+ASSIGN          =                                                     8              15             
+FLOAT_CONST     0x1.2p3              9.000000000000                   8              17             
+SEMICOLON       ;                                                     8              24             
+INT             int                                                   11             0              
+IDENT           a                    a                                11             4              
+ASSIGN          =                                                     11             6              
+INT_CONST       10                   10                               11             8              
+SEMICOLON       ;                                                     11             10             
+INT             int                                                   12             0              
+IDENT           b                    b                                12             4              
+ASSIGN          =                                                     12             6              
+INT_CONST       20                   20                               12             8              
+SEMICOLON       ;                                                     12             10             
+IF              if                                                    13             0              
+LPAREN          (                                                     13             3              
+IDENT           a                    a                                13             4              
+LEQ             <=                                                    13             6              
+IDENT           b                    b                                13             9              
+RPAREN          )                                                     13             10             
+LBRACE          {                                                     13             12             
+IDENT           a                    a                                14             4              
+ASSIGN          =                                                     14             6              
+IDENT           b                    b                                14             8              
+SEMICOLON       ;                                                     14             9              
+RBRACE          }                                                     15             0              
+IF              if                                                    16             0              
+LPAREN          (                                                     16             3              
+IDENT           a                    a                                16             4              
+GEQ             >=                                                    16             6              
+IDENT           b                    b                                16             9              
+RPAREN          )                                                     16             10             
+LBRACE          {                                                     16             12             
+IDENT           b                    b                                17             4              
+ASSIGN          =                                                     17             6              
+IDENT           a                    a                                17             8              
+SEMICOLON       ;                                                     17             9              
+RBRACE          }                                                     18             0              
+IF              if                                                    19             0              
+LPAREN          (                                                     19             3              
+IDENT           a                    a                                19             4              
+EQ              ==                                                    19             6              
+IDENT           b                    b                                19             9              
+RPAREN          )                                                     19             10             
+LBRACE          {                                                     19             12             
+IDENT           a                    a                                20             4              
+ASSIGN          =                                                     20             6              
+INT_CONST       0                    0                                20             8              
+SEMICOLON       ;                                                     20             9              
+RBRACE          }                                                     21             0              
+IF              if                                                    22             0              
+LPAREN          (                                                     22             3              
+IDENT           a                    a                                22             4              
+NE              !=                                                    22             6              
+IDENT           b                    b                                22             9              
+RPAREN          )                                                     22             10             
+LBRACE          {                                                     22             12             
+IDENT           b                    b                                23             4              
+ASSIGN          =                                                     23             6              
+INT_CONST       0                    0                                23             8              
+SEMICOLON       ;                                                     23             9              
+RBRACE          }                                                     24             0              
+IDENT           bool                 bool                             25             0              
+IDENT           andTest              andTest                          25             5              
+ASSIGN          =                                                     25             13             
+LPAREN          (                                                     25             15             
+IDENT           a                    a                                25             16             
+AND             &&                                                    25             18             
+IDENT           b                    b                                25             21             
+RPAREN          )                                                     25             22             
+SEMICOLON       ;                                                     25             23             
+IDENT           bool                 bool                             26             0              
+IDENT           orTest               orTest                           26             5              
+ASSIGN          =                                                     26             12             
+LPAREN          (                                                     26             14             
+IDENT           a                    a                                26             15             
+OR              ||                                                    26             17             
+IDENT           b                    b                                26             20             
+RPAREN          )                                                     26             21             
+SEMICOLON       ;                                                     26             22             
+CONST           const                                                 29             0              
+INT             int                                                   29             6              
+IDENT           constantValue        constantValue                    29             10             
+ASSIGN          =                                                     29             24             
+INT_CONST       5                    5                                29             26             
+SEMICOLON       ;                                                     29             27             
+IF              if                                                    30             0              
+LPAREN          (                                                     30             3              
+IDENT           constantValue        constantValue                    30             4              
+GREATER         >                                                     30             18             
+INT_CONST       0                    0                                30             20             
+RPAREN          )                                                     30             21             
+LBRACE          {                                                     30             23             
+RETURN          return                                                31             4              
+INT_CONST       1                    1                                31             11             
+SEMICOLON       ;                                                     31             12             
+RBRACE          }                                                     32             0              
+ELSE            else                                                  32             2              
+LBRACE          {                                                     32             7              
+RETURN          return                                                33             4              
+INT_CONST       0                    0                                33             11             
+SEMICOLON       ;                                                     33             12             
+RBRACE          }                                                     34             0              
+WHILE           while                                                 36             0              
+LPAREN          (                                                     36             6              
+IDENT           constantValue        constantValue                    36             7              
+NE              !=                                                    36             21             
+INT_CONST       0                    0                                36             24             
+RPAREN          )                                                     36             25             
+LBRACE          {                                                     36             27             
+IDENT           constantValue        constantValue                    37             4              
+SUB             -                                                     37             17             
+SUB             -                                                     37             18             
+SEMICOLON       ;                                                     37             19             
+RBRACE          }                                                     38             0              
+FOR             for                                                   40             0              
+LPAREN          (                                                     40             4              
+INT             int                                                   40             5              
+IDENT           i                    i                                40             9              
+ASSIGN          =                                                     40             11             
+INT_CONST       0                    0                                40             13             
+SEMICOLON       ;                                                     40             14             
+IDENT           i                    i                                40             16             
+LESS            <                                                     40             18             
+INT_CONST       10                   10                               40             20             
+SEMICOLON       ;                                                     40             22             
+IDENT           i                    i                                40             24             
+ADD             +                                                     40             25             
+ADD             +                                                     40             26             
+RPAREN          )                                                     40             27             
+LBRACE          {                                                     40             29             
+CONTINUE        continue                                              41             4              
+SEMICOLON       ;                                                     41             12             
+RBRACE          }                                                     42             0              
+BREAK           break                                                 43             0              
+SEMICOLON       ;                                                     43             5              
+INT             int                                                   52             0              
+IDENT           myVariable           myVariable                       52             4              
+ASSIGN          =                                                     52             15             
+INT_CONST       100                  100                              52             17             
+SEMICOLON       ;                                                     52             20             
+INT             int                                                   53             0              
+IDENT           another_var          another_var                      53             4              
+ASSIGN          =                                                     53             16             
+INT_CONST       200                  200                              53             18             
+SEMICOLON       ;                                                     53             21             
+IDENT           char                 char                             56             0              
+MUL             *                                                     56             4              
+IDENT           str                  str                              56             6              
+ASSIGN          =                                                     56             10             
+STR_CONST       "Hello, World!"      "Hello, World!"                  56             12             
+SEMICOLON       ;                                                     56             27             
+IDENT           char                 char                             57             0              
+MUL             *                                                     57             4              
+IDENT           escapedStr           escapedStr                       57             6              
+ASSIGN          =                                                     57             17             
+STR_CONST       "This is a string with \n a newline." "This is a string with \n a newline." 57             19             
+SEMICOLON       ;                                                     57             56             
+IDENT           char                 char                             60             0              
+MUL             *                                                     60             4              
+IDENT           unterminatedStr      unterminatedStr                  60             6              
+ASSIGN          =                                                     60             22             
+ERROR           "                    "                                60             24             
+IDENT           This                 This                             60             25             
+IDENT           string               string                           60             30             
+IDENT           is                   is                               60             37             
+IDENT           not                  not                              60             40             
+IDENT           closed               closed                           60             44             
+SEMICOLON       ;                                                     60             50             
+ERROR                                EOF in comment                   69             50             

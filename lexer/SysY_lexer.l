@@ -11,11 +11,10 @@ extern int col_number;
 extern int cur_col_number;
 extern IdTable id_table;
 void yyerror(char* s, ...);
-char* yytext_ptr; // 用于存储字符串内容
+
 %}
 
 %x COMMENT
-%x STRING
 
 %%
     /* TODO():增加处理注释的代码*/
@@ -210,7 +209,7 @@ char* yytext_ptr; // 用于存储字符串内容
     return INT_CONST;  // 返回整数常量类型
 }
 
-    /*十六进制*/
+    /*十进制*/
 "0"[xX][0-9a-fA-F]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -412,61 +411,67 @@ char* yytext_ptr; // 用于存储字符串内容
     return FLOAT_CONST;
 }
 
-\" {
+    /* 字符串常量的检测规则 */
+\"(\\.|[^"\\\n])*\" {
     cur_col_number = col_number;
-    col_number += 1;
-    yytext_ptr = strdup("");
-    BEGIN(STRING);
-}
+    col_number += strlen(yytext);
 
-<STRING>{
-    \\[nt\\\"\'bfr] {
-        char escaped_char;
-        switch (yytext[1]) {
-            case 'n': escaped_char = '\n'; break;
-            case 't': escaped_char = '\t'; break;
-            case '\\': escaped_char = '\\'; break;
-            case '\"': escaped_char = '\"'; break;
-            case '\'': escaped_char = '\''; break;
-            case 'b': escaped_char = '\b'; break;
-            case 'f': escaped_char = '\f'; break;
-            case 'r': escaped_char = '\r'; break;
-            default: escaped_char = yytext[1]; break;
+    std::string raw_string(yytext);
+
+    std::string content = raw_string.substr(1, raw_string.length() - 2);
+
+    std::string processed_string;
+    for (size_t i = 0; i < content.length(); ) {
+        if (content[i] == '\\') {
+            i++;
+            if (i >= content.length()) {
+                static char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), "Invalid escape sequence at end of string");
+                yylval.error_msg = error_msg;
+                return ERROR;
+            }
+            char esc_char = content[i];
+            switch (esc_char) {
+                case 'n':
+                    processed_string += "\\n";
+                    break;
+                case 't':
+                    processed_string += "\\t";
+                    break;
+                case 'r':
+                    processed_string += "\\r";
+                    break;
+                case '\\':
+                    processed_string += "\\\\";
+                    break;
+                case '\'':
+                    processed_string += "\\'";
+                    break;
+                case '"':
+                    processed_string += "\\\"";
+                    break;
+                case '0':
+                    processed_string += "\\0";
+                    break;
+                default:
+                    {
+                        static char error_msg[256];
+                        snprintf(error_msg, sizeof(error_msg), "Invalid escape sequence: \\%c", esc_char);
+                        yylval.error_msg = error_msg;
+                        return ERROR;
+                    }
+            }
+            i++;
+        } else {
+            processed_string += content[i];
+            i++;
         }
-        char temp[2] = {escaped_char, '\0'};
-        yytext_ptr = (char*)realloc(yytext_ptr, strlen(yytext_ptr) + 2);
-        strcat(yytext_ptr, temp);
-        col_number += 2;
     }
-    [^\\\"\n]+ {
-        yytext_ptr = (char*)realloc(yytext_ptr, strlen(yytext_ptr) + strlen(yytext) + 1);
-        strcat(yytext_ptr, yytext);
-        col_number += strlen(yytext);
-    }
-    \" {
-        col_number += 1;
-        yylval.symbol_token = id_table.add_id(std::string(yytext_ptr));
-        free(yytext_ptr);
-        BEGIN(INITIAL);
-        return STR_CONST;
-    }
-    \n {
-        yylval.error_msg = "Unterminated string constant";
-        free(yytext_ptr);
-        BEGIN(INITIAL);
-        return ERROR;
-    }
-    <<EOF>> {
-        yylval.error_msg = "EOF in string constant";
-        free(yytext_ptr);
-        BEGIN(INITIAL);
-        return ERROR;
-    }
-    . {
-        yytext_ptr = (char*)realloc(yytext_ptr, strlen(yytext_ptr) + 2);
-        strncat(yytext_ptr, yytext, 1);
-        col_number += 1;
-    }
+
+    std::string final_string = "\"" + processed_string + "\"";
+    yylval.symbol_token = id_table.add_id(final_string);
+
+    return STR_CONST;
 }
 
     /*unknown tokens, return ERROR*/

@@ -1,51 +1,68 @@
-// 单行注释测试
+// 1. 整数和常量
+int decimalInt = 123;
+int octalInt = 0123; // 八进制
+int hexInt = 0x1A3F; // 十六进制
+float floatNum = 123.456;
+float floatWithLeadingDot = .456;
+float scientificFloat = 1.23e-4;
+float hexFloat = 0x1.2p3;
+
+// 2. 运算符
+int a = 10;
+int b = 20;
+if (a <= b) {
+    a = b;
+}
+if (a >= b) {
+    b = a;
+}
+if (a == b) {
+    a = 0;
+}
+if (a != b) {
+    b = 0;
+}
+bool andTest = (a && b);
+bool orTest = (a || b);
+
+// 3. 关键字
+const int constantValue = 5;
+if (constantValue > 0) {
+    return 1;
+} else {
+    return 0;
+}
+
+while (constantValue != 0) {
+    constantValue--;
+}
+
+for (int i = 0; i < 10; i++) {
+    continue;
+}
+break;
+
+// 4. 注释
 // This is a single-line comment
 
-/* 多行注释测试 */
-/* This is a multi-line comment */
+/* This is a
+   multi-line comment */
 
-/* 未结束的多行注释测试
-/* Unterminated multi-line comment
+// 5. 标识符
+int myVariable = 100;
+int another_var = 200;
 
-Some code */ // 未匹配的注释结束符
+// 6. 字符串常量
+char* str = "Hello, World!";
+char* escapedStr = "This is a string with \n a newline.";
 
-// 操作符测试
-<= >= == != && || + - * / = < > ! %
+// 7. 未闭合的字符串（错误测试）
+char* unterminatedStr = "This string is not closed;
 
-// 关键字测试
-const if else while void int float return break continue TODO
+// 8. 未匹配的注释结束符（错误测试）
+/* This comment is not closed
 
-// 标点符号测试
-{ } ; ( ) , [ ]
-
-// 标识符测试
-var1 _var var_name Var123
-
-// 整数常量测试
-0 12345 01234567 0x1A3F 0XABCDEF 0x0
-
-// 浮点数常量测试
-1.23 123. .456 1e10 1.23e+10 1.23e-10 .1e2 1.e2 0.0
-
-// 十六进制浮点数测试
-0x1.23p10 0X1.23P+10 0x1p-10 0x.1p2
-
-// 错误处理测试
-@  // 无效字符
-0xGHI  // 无效的十六进制整数
-1.23.45  // 无效的浮点数
-1.2.3  // 无效的浮点数
-1e+  // 无效的浮点数
-0x1.23e10  // 无效的十六进制浮点数
-0x1G  // 无效的十六进制浮点数
-0x1p+  // 无效的十六进制浮点数
-0x1.Zp1  // 无效的十六进制浮点数
-
-// 未匹配的注释结束符测试
-some code */
-
-/* 以数字开头的标识符测试 */
-1abc
-
-// 空输入测试
-
+// 9. 错误处理
+int invalidFloat = 1.2.3; // 错误：非法浮点数
+int invalidHex = 0xGHI; // 错误：非法十六进制数
+char* invalidEscape = "Invalid escape \q"; // 错误：非法转义字符
