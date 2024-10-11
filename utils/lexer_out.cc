@@ -96,6 +96,12 @@ void PrintLexerResult(std::ostream &s, char *yytext, YYSTYPE yylval, int token) 
     case CONTINUE:
         ALIGNED_FORMAT_OUTPUT("CONTINUE", yytext, "");
         break;
+    case FOR:
+        ALIGNED_FORMAT_OUTPUT("FOR", yytext, "");
+        break;
+    case TODO:
+        ALIGNED_FORMAT_OUTPUT("TODO", yytext, "");
+        break;
     case ERROR:
         ALIGNED_FORMAT_OUTPUT("ERROR", yytext, yylval.error_msg);
         break;

@@ -11,10 +11,11 @@ extern int col_number;
 extern int cur_col_number;
 extern IdTable id_table;
 void yyerror(char* s, ...);
+char* yytext_ptr; // 用于存储字符串内容
 %}
 
 %x COMMENT
-
+%x STRING
 
 %%
     /* TODO():增加处理注释的代码*/
@@ -149,6 +150,13 @@ void yyerror(char* s, ...);
     return FOR;
 }
 
+    /*TODO*/
+"TODO" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return TODO;
+}
+
 \n {++line_number;col_number = 0;}
 
 [ \t\f\r\v] {col_number += strlen(yytext);}
@@ -202,7 +210,7 @@ void yyerror(char* s, ...);
     return INT_CONST;  // 返回整数常量类型
 }
 
-    /*十六进制*/
+    /*十进制*/
 "0"[xX][0-9a-fA-F]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -404,6 +412,63 @@ void yyerror(char* s, ...);
     return FLOAT_CONST;
 }
 
+\" {
+    cur_col_number = col_number;
+    col_number += 1;
+    yytext_ptr = strdup("");
+    BEGIN(STRING);
+}
+
+<STRING>{
+    \\[nt\\\"\'bfr] {
+        char escaped_char;
+        switch (yytext[1]) {
+            case 'n': escaped_char = '\n'; break;
+            case 't': escaped_char = '\t'; break;
+            case '\\': escaped_char = '\\'; break;
+            case '\"': escaped_char = '\"'; break;
+            case '\'': escaped_char = '\''; break;
+            case 'b': escaped_char = '\b'; break;
+            case 'f': escaped_char = '\f'; break;
+            case 'r': escaped_char = '\r'; break;
+            default: escaped_char = yytext[1]; break;
+        }
+        char temp[2] = {escaped_char, '\0'};
+        yytext_ptr = (char*)realloc(yytext_ptr, strlen(yytext_ptr) + 2);
+        strcat(yytext_ptr, temp);
+        col_number += 2;
+    }
+    [^\\\"\n]+ {
+        yytext_ptr = (char*)realloc(yytext_ptr, strlen(yytext_ptr) + strlen(yytext) + 1);
+        strcat(yytext_ptr, yytext);
+        col_number += strlen(yytext);
+    }
+    \" {
+        col_number += 1;
+        yylval.symbol_token = id_table.add_id(std::string(yytext_ptr));
+        free(yytext_ptr);
+        BEGIN(INITIAL);
+        return STR_CONST;
+    }
+    \n {
+        yylval.error_msg = "Unterminated string constant";
+        free(yytext_ptr);
+        BEGIN(INITIAL);
+        return ERROR;
+    }
+    <<EOF>> {
+        yylval.error_msg = "EOF in string constant";
+        free(yytext_ptr);
+        BEGIN(INITIAL);
+        return ERROR;
+    }
+    . {
+        yytext_ptr = (char*)realloc(yytext_ptr, strlen(yytext_ptr) + 2);
+        strncat(yytext_ptr, yytext, 1);
+        col_number += 1;
+    }
+}
+
     /*unknown tokens, return ERROR*/
 . {
     cur_col_number = col_number;
@@ -412,4 +477,3 @@ void yyerror(char* s, ...);
     return ERROR;
 }
 %%
-
