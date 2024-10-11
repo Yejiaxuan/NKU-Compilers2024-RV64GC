@@ -146,9 +146,15 @@ void yyerror(char* s, ...);
 
 [ \t\f\r\v] {col_number += strlen(yytext);}
 
-[\.\+\-\*\/\=\<\!\%\>] {return yytext[0];}
+[\.\+\-\*\/\=\<\!\%\>] {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return yytext[0];}
 
-[\{\}\;\(\)\,\[\]] {return yytext[0];}
+[\{\}\;\(\)\,\[\]] {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return yytext[0];}
 
 [_a-zA-Z][_a-zA-Z0-9]* {
     cur_col_number = col_number;
@@ -175,8 +181,8 @@ void yyerror(char* s, ...);
     */
     /*TODO():参考SysY2022定义, 处理更多的词法, 如浮点数，十六进制数等*/
 
-//八进制
-0[0-7]+ {
+    /*八进制*/
+"0"[0-7]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
     yylval.int_token = 0;
@@ -189,8 +195,8 @@ void yyerror(char* s, ...);
     return INT_CONST;  // 返回整数常量类型
 }
 
-// 十六进制
-0[xX][0-9a-fA-F]+ {
+    /*十进制*/
+"0"[xX][0-9a-fA-F]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
     yylval.int_token = 0;
