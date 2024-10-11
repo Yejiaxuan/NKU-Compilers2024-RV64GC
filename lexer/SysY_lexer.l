@@ -142,6 +142,13 @@ void yyerror(char* s, ...);
     return CONTINUE;
 }
 
+    /*for*/
+"for" {
+    cur_col_number = col_number;
+    col_number += strlen(yytext);
+    return FOR;
+}
+
 \n {++line_number;col_number = 0;}
 
 [ \t\f\r\v] {col_number += strlen(yytext);}
