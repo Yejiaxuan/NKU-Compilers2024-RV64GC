@@ -202,7 +202,7 @@ void yyerror(char* s, ...);
     return INT_CONST;  // 返回整数常量类型
 }
 
-    /*十进制*/
+    /*十六进制*/
 "0"[xX][0-9a-fA-F]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
