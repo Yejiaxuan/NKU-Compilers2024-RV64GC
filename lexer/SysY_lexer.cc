@@ -884,7 +884,7 @@ case YY_STATE_EOF(COMMENT):
 #line 46 "lexer/SysY_lexer.l"
 {
         BEGIN(INITIAL);
-        yylval.error_msg = "Unterminated comment";
+        yylval.error_msg = "Unmatched /*";
         return ERROR;
     }
 	YY_BREAK
@@ -1165,10 +1165,10 @@ YY_RULE_SETUP
     double fraction_part = 0.0;
     int exponent = 0;
     int exponent_sign = 1;
-    int fraction_divisor = 1;
-    int state = 0; // 0: 整数部分, 1: 小数部分, 2: 指数部分
+    int num_fraction_digits = 0;
+    int state = 0; // 0: 整数部分, 1: 小数部分
 
-    // 解析整数部分和小数部分
+    // 解析整数和小数部分
     while (*p != '\0' && *p != 'e' && *p != 'E') {
         if (*p == '.') {
             if (state == 0) {
@@ -1185,7 +1185,7 @@ YY_RULE_SETUP
                 integer_part = integer_part * 10 + (*p - '0');
             } else if (state == 1) {
                 fraction_part = fraction_part * 10 + (*p - '0');
-                fraction_divisor *= 10;
+                num_fraction_digits++;
             }
             p++;
         } else {
@@ -1194,8 +1194,8 @@ YY_RULE_SETUP
         }
     }
 
-    // 合并整数部分和小数部分
-    double result = integer_part + fraction_part / fraction_divisor;
+    // 合并整数和小数部分
+    double result = integer_part + fraction_part / pow(10.0, num_fraction_digits);
 
     // 解析指数部分
     if (*p == 'e' || *p == 'E') {
@@ -1207,7 +1207,7 @@ YY_RULE_SETUP
             exponent_sign = -1;
             p++;
         }
-        // 解析指数的值
+        // 解析指数值
         while (*p != '\0') {
             if ('0' <= *p && *p <= '9') {
                 exponent = exponent * 10 + (*p - '0');
@@ -1219,21 +1219,11 @@ YY_RULE_SETUP
         }
     }
 
-    // 手动计算10的指数次方
-    double exp_result = 1.0;
-    int total_exponent = exponent_sign * exponent;
-    if (total_exponent > 0) {
-        for (int i = 0; i < total_exponent; ++i) {
-            exp_result *= 10.0;
-        }
-    } else if (total_exponent < 0) {
-        for (int i = 0; i < -total_exponent; ++i) {
-            exp_result /= 10.0;
-        }
-    }
+    // 计算指数因子
+    double exp_result = pow(10.0, exponent_sign * exponent);
 
     // 计算最终结果
-    result = result * exp_result;
+    result *= exp_result;
 
     yylval.float_token = result;
     return FLOAT_CONST;
@@ -1241,7 +1231,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 321 "lexer/SysY_lexer.l"
+#line 312 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1343,7 +1333,7 @@ YY_RULE_SETUP
 /* 字符串常量的检测规则 */
 case 35:
 YY_RULE_SETUP
-#line 420 "lexer/SysY_lexer.l"
+#line 411 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1409,7 +1399,7 @@ YY_RULE_SETUP
 /*unknown tokens, return ERROR*/
 case 36:
 YY_RULE_SETUP
-#line 483 "lexer/SysY_lexer.l"
+#line 474 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1419,10 +1409,10 @@ YY_RULE_SETUP
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 489 "lexer/SysY_lexer.l"
+#line 480 "lexer/SysY_lexer.l"
 ECHO;
 	YY_BREAK
-#line 1426 "lexer/SysY_lexer.cc"
+#line 1416 "lexer/SysY_lexer.cc"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -2427,6 +2417,6 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 489 "lexer/SysY_lexer.l"
+#line 480 "lexer/SysY_lexer.l"
 
 
