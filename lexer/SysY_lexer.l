@@ -44,7 +44,7 @@ void yyerror(char* s, ...);
     }
     <<EOF>> {
         BEGIN(INITIAL);
-        yylval.error_msg = "Unterminated comment";
+        yylval.error_msg = "Unmatched /*";
         return ERROR;
     }
 }
