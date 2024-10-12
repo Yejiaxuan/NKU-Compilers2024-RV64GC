@@ -233,7 +233,7 @@ void yyerror(char* s, ...);
     return INT_CONST;  // 返回整数常量类型
 }
 
-(([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+) {
+([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
 
@@ -243,10 +243,10 @@ void yyerror(char* s, ...);
     double fraction_part = 0.0;
     int exponent = 0;
     int exponent_sign = 1;
-    int fraction_divisor = 1;
-    int state = 0; // 0: 整数部分, 1: 小数部分, 2: 指数部分
+    int num_fraction_digits = 0;
+    int state = 0; // 0: 整数部分, 1: 小数部分
 
-    // 解析整数部分和小数部分
+    // 解析整数和小数部分
     while (*p != '\0' && *p != 'e' && *p != 'E') {
         if (*p == '.') {
             if (state == 0) {
@@ -263,7 +263,7 @@ void yyerror(char* s, ...);
                 integer_part = integer_part * 10 + (*p - '0');
             } else if (state == 1) {
                 fraction_part = fraction_part * 10 + (*p - '0');
-                fraction_divisor *= 10;
+                num_fraction_digits++;
             }
             p++;
         } else {
@@ -272,8 +272,8 @@ void yyerror(char* s, ...);
         }
     }
 
-    // 合并整数部分和小数部分
-    double result = integer_part + fraction_part / fraction_divisor;
+    // 合并整数和小数部分
+    double result = integer_part + fraction_part / pow(10.0, num_fraction_digits);
 
     // 解析指数部分
     if (*p == 'e' || *p == 'E') {
@@ -285,7 +285,7 @@ void yyerror(char* s, ...);
             exponent_sign = -1;
             p++;
         }
-        // 解析指数的值
+        // 解析指数值
         while (*p != '\0') {
             if ('0' <= *p && *p <= '9') {
                 exponent = exponent * 10 + (*p - '0');
@@ -297,25 +297,16 @@ void yyerror(char* s, ...);
         }
     }
 
-    // 手动计算10的指数次方
-    double exp_result = 1.0;
-    int total_exponent = exponent_sign * exponent;
-    if (total_exponent > 0) {
-        for (int i = 0; i < total_exponent; ++i) {
-            exp_result *= 10.0;
-        }
-    } else if (total_exponent < 0) {
-        for (int i = 0; i < -total_exponent; ++i) {
-            exp_result /= 10.0;
-        }
-    }
+    // 计算指数因子
+    double exp_result = pow(10.0, exponent_sign * exponent);
 
     // 计算最终结果
-    result = result * exp_result;
+    result *= exp_result;
 
     yylval.float_token = result;
     return FLOAT_CONST;
 }
+
 
 0[xX]([0-9a-fA-F]+(\.[0-9a-fA-F]*)?|\.[0-9a-fA-F]+)[pP][+-]?[0-9]+ {
     cur_col_number = col_number;
