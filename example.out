@@ -166,37 +166,37 @@ SEMICOLON       ;                                                     41        
 RBRACE          }                                                     42             0              
 BREAK           break                                                 43             0              
 SEMICOLON       ;                                                     43             5              
-INT             int                                                   52             0              
-IDENT           myVariable           myVariable                       52             4              
-ASSIGN          =                                                     52             15             
-INT_CONST       100                  100                              52             17             
-SEMICOLON       ;                                                     52             20             
 INT             int                                                   53             0              
-IDENT           another_var          another_var                      53             4              
-ASSIGN          =                                                     53             16             
-INT_CONST       200                  200                              53             18             
-SEMICOLON       ;                                                     53             21             
-IDENT           char                 char                             56             0              
-MUL             *                                                     56             4              
-IDENT           str                  str                              56             6              
-ASSIGN          =                                                     56             10             
-STR_CONST       "Hello, World!"      "Hello, World!"                  56             12             
-SEMICOLON       ;                                                     56             27             
+IDENT           myVariable           myVariable                       53             4              
+ASSIGN          =                                                     53             15             
+INT_CONST       100                  100                              53             17             
+SEMICOLON       ;                                                     53             20             
+INT             int                                                   54             0              
+IDENT           another_var          another_var                      54             4              
+ASSIGN          =                                                     54             16             
+INT_CONST       200                  200                              54             18             
+SEMICOLON       ;                                                     54             21             
 IDENT           char                 char                             57             0              
 MUL             *                                                     57             4              
-IDENT           escapedStr           escapedStr                       57             6              
-ASSIGN          =                                                     57             17             
-STR_CONST       "This is a string with \n a newline." "This is a string with \n a newline." 57             19             
-SEMICOLON       ;                                                     57             56             
-IDENT           char                 char                             60             0              
-MUL             *                                                     60             4              
-IDENT           unterminatedStr      unterminatedStr                  60             6              
-ASSIGN          =                                                     60             22             
-ERROR           "                    "                                60             24             
-IDENT           This                 This                             60             25             
-IDENT           string               string                           60             30             
-IDENT           is                   is                               60             37             
-IDENT           not                  not                              60             40             
-IDENT           closed               closed                           60             44             
-SEMICOLON       ;                                                     60             50             
-ERROR                                EOF in comment                   69             50             
+IDENT           str                  str                              57             6              
+ASSIGN          =                                                     57             10             
+STR_CONST       "Hello, World!"      "Hello, World!"                  57             12             
+SEMICOLON       ;                                                     57             27             
+IDENT           char                 char                             58             0              
+MUL             *                                                     58             4              
+IDENT           escapedStr           escapedStr                       58             6              
+ASSIGN          =                                                     58             17             
+STR_CONST       "This is a string with \n a newline." "This is a string with \n a newline." 58             19             
+SEMICOLON       ;                                                     58             56             
+IDENT           char                 char                             61             0              
+MUL             *                                                     61             4              
+IDENT           unterminatedStr      unterminatedStr                  61             6              
+ASSIGN          =                                                     61             22             
+ERROR           "                    "                                61             24             
+IDENT           This                 This                             61             25             
+IDENT           string               string                           61             30             
+IDENT           is                   is                               61             37             
+IDENT           not                  not                              61             40             
+IDENT           closed               closed                           61             44             
+SEMICOLON       ;                                                     61             50             
+ERROR                                Unterminated comment             70             50             

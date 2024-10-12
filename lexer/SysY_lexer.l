@@ -11,7 +11,6 @@ extern int col_number;
 extern int cur_col_number;
 extern IdTable id_table;
 void yyerror(char* s, ...);
-
 %}
 
 %x COMMENT
@@ -21,26 +20,31 @@ void yyerror(char* s, ...);
     /* 处理注释的代码 */
 "//"[^\n]* {
     col_number += strlen(yytext);  // 更新列号
-    /* 忽略单行注释 */
 }
-
 "/*" {
     BEGIN(COMMENT);
     col_number += 2; // 计入 '/*' 的两个字符
 }
 "*/" {
-    col_number += strlen(yytext);
-    yylval.error_msg = "unmatched */";
+    col_number += 2;
+    yylval.error_msg = "Unmatched */";
     return ERROR;
 }
-
 <COMMENT>{
-    "*/"   { BEGIN(INITIAL); col_number += 2; } // 计入 '*/' 的两个字符
-    "\n"   { ++line_number; col_number = 0; }
-    .      { col_number += strlen(yytext); }
+    "*/" {
+        BEGIN(INITIAL);
+        col_number += 2;  // 计入 '*/' 的两个字符
+    }
+    "\n" {
+        ++line_number;
+        col_number = 0;
+    }
+    . {
+        col_number += strlen(yytext);
+    }
     <<EOF>> {
         BEGIN(INITIAL);
-        yylval.error_msg = "EOF in comment";
+        yylval.error_msg = "Unterminated comment";
         return ERROR;
     }
 }
@@ -209,7 +213,7 @@ void yyerror(char* s, ...);
     return INT_CONST;  // 返回整数常量类型
 }
 
-    /*十进制*/
+    /*十六进制*/
 "0"[xX][0-9a-fA-F]+ {
     cur_col_number = col_number;
     col_number += strlen(yytext);
