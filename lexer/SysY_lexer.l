@@ -22,10 +22,12 @@ void yyerror(char* s, ...);
     col_number += strlen(yytext);  // 更新列号
 }
 "/*" {
+    cur_col_number = col_number;
     BEGIN(COMMENT);
     col_number += 2; // 计入 '/*' 的两个字符
 }
 "*/" {
+    cur_col_number = col_number;
     col_number += 2;
     yylval.error_msg = "Unmatched */";
     return ERROR;
@@ -390,7 +392,7 @@ void yyerror(char* s, ...);
                 p++;
             } else {
                 yylval.error_msg = "Invalid character in exponent";
-                return ERROR;
+                return ERROR;;
             }
         }
     } else {

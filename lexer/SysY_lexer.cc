@@ -842,14 +842,16 @@ case 2:
 YY_RULE_SETUP
 #line 25 "lexer/SysY_lexer.l"
 {
+    cur_col_number = col_number;
     BEGIN(COMMENT);
     col_number += 2; // 计入 '/*' 的两个字符
 }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 29 "lexer/SysY_lexer.l"
+#line 30 "lexer/SysY_lexer.l"
 {
+    cur_col_number = col_number;
     col_number += 2;
     yylval.error_msg = "Unmatched */";
     return ERROR;
@@ -858,7 +860,7 @@ YY_RULE_SETUP
 
 case 4:
 YY_RULE_SETUP
-#line 35 "lexer/SysY_lexer.l"
+#line 37 "lexer/SysY_lexer.l"
 {
         BEGIN(INITIAL);
         col_number += 2;  // 计入 '*/' 的两个字符
@@ -867,7 +869,7 @@ YY_RULE_SETUP
 case 5:
 /* rule 5 can match eol */
 YY_RULE_SETUP
-#line 39 "lexer/SysY_lexer.l"
+#line 41 "lexer/SysY_lexer.l"
 {
         ++line_number;
         col_number = 0;
@@ -875,13 +877,13 @@ YY_RULE_SETUP
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 43 "lexer/SysY_lexer.l"
+#line 45 "lexer/SysY_lexer.l"
 {
         col_number += strlen(yytext);
     }
 	YY_BREAK
 case YY_STATE_EOF(COMMENT):
-#line 46 "lexer/SysY_lexer.l"
+#line 48 "lexer/SysY_lexer.l"
 {
         BEGIN(INITIAL);
         yylval.error_msg = "Unmatched /*";
@@ -892,7 +894,7 @@ case YY_STATE_EOF(COMMENT):
 /* TODO():增加处理列号的代码(cur_col_number表示当前token开始位置, col_number表示当前token结束位置) */
 case 7:
 YY_RULE_SETUP
-#line 54 "lexer/SysY_lexer.l"
+#line 56 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -901,7 +903,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 60 "lexer/SysY_lexer.l"
+#line 62 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -910,7 +912,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 66 "lexer/SysY_lexer.l"
+#line 68 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -919,7 +921,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 72 "lexer/SysY_lexer.l"
+#line 74 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -928,7 +930,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 78 "lexer/SysY_lexer.l"
+#line 80 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -937,7 +939,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 84 "lexer/SysY_lexer.l"
+#line 86 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -946,7 +948,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 90 "lexer/SysY_lexer.l"
+#line 92 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -955,7 +957,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 96 "lexer/SysY_lexer.l"
+#line 98 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -964,7 +966,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 102 "lexer/SysY_lexer.l"
+#line 104 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -973,7 +975,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 108 "lexer/SysY_lexer.l"
+#line 110 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -982,7 +984,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 114 "lexer/SysY_lexer.l"
+#line 116 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -991,7 +993,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 120 "lexer/SysY_lexer.l"
+#line 122 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1000,7 +1002,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 126 "lexer/SysY_lexer.l"
+#line 128 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1009,7 +1011,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 132 "lexer/SysY_lexer.l"
+#line 134 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1018,7 +1020,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 138 "lexer/SysY_lexer.l"
+#line 140 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1027,7 +1029,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 144 "lexer/SysY_lexer.l"
+#line 146 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1037,7 +1039,7 @@ YY_RULE_SETUP
 /*for*/
 case 23:
 YY_RULE_SETUP
-#line 151 "lexer/SysY_lexer.l"
+#line 153 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1047,7 +1049,7 @@ YY_RULE_SETUP
 /*TODO*/
 case 24:
 YY_RULE_SETUP
-#line 158 "lexer/SysY_lexer.l"
+#line 160 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1057,17 +1059,17 @@ YY_RULE_SETUP
 case 25:
 /* rule 25 can match eol */
 YY_RULE_SETUP
-#line 164 "lexer/SysY_lexer.l"
+#line 166 "lexer/SysY_lexer.l"
 {++line_number;col_number = 0;}
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 166 "lexer/SysY_lexer.l"
+#line 168 "lexer/SysY_lexer.l"
 {col_number += strlen(yytext);}
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 168 "lexer/SysY_lexer.l"
+#line 170 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1075,7 +1077,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 173 "lexer/SysY_lexer.l"
+#line 175 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1083,7 +1085,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 178 "lexer/SysY_lexer.l"
+#line 180 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1093,7 +1095,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 184 "lexer/SysY_lexer.l"
+#line 186 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1115,7 +1117,7 @@ YY_RULE_SETUP
 /*八进制*/
 case 31:
 YY_RULE_SETUP
-#line 204 "lexer/SysY_lexer.l"
+#line 206 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1132,7 +1134,7 @@ YY_RULE_SETUP
 /*十六进制*/
 case 32:
 YY_RULE_SETUP
-#line 218 "lexer/SysY_lexer.l"
+#line 220 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1154,7 +1156,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 237 "lexer/SysY_lexer.l"
+#line 239 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1231,7 +1233,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 312 "lexer/SysY_lexer.l"
+#line 314 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1314,7 +1316,7 @@ YY_RULE_SETUP
                 p++;
             } else {
                 yylval.error_msg = "Invalid character in exponent";
-                return ERROR;
+                return ERROR;;
             }
         }
     } else {
@@ -1333,7 +1335,7 @@ YY_RULE_SETUP
 /* 字符串常量的检测规则 */
 case 35:
 YY_RULE_SETUP
-#line 411 "lexer/SysY_lexer.l"
+#line 413 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1399,7 +1401,7 @@ YY_RULE_SETUP
 /*unknown tokens, return ERROR*/
 case 36:
 YY_RULE_SETUP
-#line 474 "lexer/SysY_lexer.l"
+#line 476 "lexer/SysY_lexer.l"
 {
     cur_col_number = col_number;
     col_number += strlen(yytext);
@@ -1409,10 +1411,10 @@ YY_RULE_SETUP
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 480 "lexer/SysY_lexer.l"
+#line 482 "lexer/SysY_lexer.l"
 ECHO;
 	YY_BREAK
-#line 1416 "lexer/SysY_lexer.cc"
+#line 1418 "lexer/SysY_lexer.cc"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -2417,6 +2419,6 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 480 "lexer/SysY_lexer.l"
+#line 482 "lexer/SysY_lexer.l"
 
 
