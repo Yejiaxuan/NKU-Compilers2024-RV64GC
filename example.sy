@@ -1,69 +1,30 @@
-// 1. 整数和常量
-int decimalInt = 123;
-int octalInt = 0123; // 八进制
-int hexInt = 0x1A3F; // 十六进制
-float floatNum = 123.456;
-float floatWithLeadingDot = .456;
-float scientificFloat = 1.23e-4;
-float hexFloat = 0x1.2p3;
+const float RADIUS = 5.5, PI = 03.141592653589793, EPS = 1e-6, FACT = -.33E+5, PI_HEX = 0x1.921fb6p+1, HEX2 = 0x.AP-3,CONV1 = 233, CONV2 = 0xfff, MAX = 1e9;
 
-// 2. 运算符
-int a = 10;
-int b = 20;
-if (a <= b) {
-    a = b;
+int limit1 = -2147483648;
+int limit2 = -/*cirno*/2147483648;
+int limit3 = - 1 - -
+/*
+*/
+
+2147483648 - + 2 ;
+
+/*/skipher/*/
+//int main(){
+int main(){
+	////return 0;}/*
+	/*}
+	//}return 1;*/
+	//}return 2;*//*
+	float i = -0111;
+	while(i < 0x2f.a5p+5){
+		i = i + 0x3.ap-2;
+		i = i - -3 + +2 -+2 + 1 - 1;
+	}
+
+    return - /*cirno            */ 02000000000;
+	return -  0x80000000;
+    return /*                              */0x3f3f3f3f * 07 % 010 / 0x10;
+	//*/
 }
-if (a >= b) {
-    b = a;
-}
-if (a == b) {
-    a = 0;
-}
-if (a != b) {
-    b = 0;
-}
-bool andTest = (a && b);
-bool orTest = (a || b);
+//
 
-// 3. 关键字
-const int constantValue = 5;
-if (constantValue > 0) {
-    return 1;
-} else {
-    return 0;
-}
-
-while (constantValue != 0) {
-    constantValue--;
-}
-
-for (int i = 0; i < 10; i++) {
-    continue;
-}
-break;
-
-// 4. 注释
-// This is a single-line comment
-
-/* This is a
-   *
-   multi-line comment */
-
-// 5. 标识符
-int myVariable = 100;
-int another_var = 200;
-
-// 6. 字符串常量
-char* str = "Hello, World!";
-char* escapedStr = "This is a string with \n a newline.";
-
-// 7. 未闭合的字符串（错误测试）
-char* unterminatedStr = "This string is not closed;
-
-// 8. 未匹配的注释结束符（错误测试）
-/* This comment is not closed
-
-// 9. 错误处理
-int invalidFloat = 1.2.3; // 错误：非法浮点数
-int invalidHex = 0xGHI; // 错误：非法十六进制数
-char* invalidEscape = "Invalid escape \q"; // 错误：非法转义字符

@@ -1316,7 +1316,7 @@ YY_RULE_SETUP
                 p++;
             } else {
                 yylval.error_msg = "Invalid character in exponent";
-                return ERROR;;
+                return ERROR;
             }
         }
     } else {

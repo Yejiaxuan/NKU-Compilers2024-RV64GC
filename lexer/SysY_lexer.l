@@ -392,7 +392,7 @@ void yyerror(char* s, ...);
                 p++;
             } else {
                 yylval.error_msg = "Invalid character in exponent";
-                return ERROR;;
+                return ERROR;
             }
         }
     } else {
