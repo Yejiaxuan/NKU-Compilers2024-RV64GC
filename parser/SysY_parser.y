@@ -47,8 +47,8 @@ extern IdTable id_table;
 %type <func_def> FuncDef 
 %type <expression> Exp LOrExp AddExp MulExp RelExp EqExp LAndExp UnaryExp PrimaryExp
 %type <expression> ConstExp Lval FuncRParams Cond
-%type <expression> IntConst FloatConst
-%type <expressions> Exp_list;
+%type <expression> IntConst FloatConst Arr_Dim ConstArr_Dim
+%type <expressions> Exp_list Arr_Dim_list ConstArr_Dim_list;
 %type <stmt> Stmt 
 %type <block> Block
 %type <block_item> BlockItem
@@ -104,9 +104,15 @@ Decl
 }
 ;
 
+// start
+
 VarDecl
 :INT VarDef_list ';'{
     $$ = new VarDecl(Type::INT,$2); 
+    $$->SetLineNumber(line_number);
+}
+|FLOAT VarDef_list ';'{
+    $$ = new VarDecl(Type::FLOAT,$2); 
     $$->SetLineNumber(line_number);
 }
 ;
@@ -118,17 +124,40 @@ ConstDecl
     $$ = new ConstDecl(Type::INT,$3); 
     $$->SetLineNumber(line_number);
 }
+|CONST FLOAT ConstDef_list ';'{
+    $$ = new ConstDecl(Type::FLOAT,$3); 
+    $$->SetLineNumber(line_number);
+}
 ;
 
 // TODO(): 考虑变量定义更多情况  
 
 VarDef_list
-:TODO{}
+:VarDef
+{
+    $$ = new std::vector<Def>;
+    ($$)->push_back($1);  // 将单个变量定义放入列表
+}
+|VarDef_list ',' VarDef
+{
+    ($1)->push_back($3);  // 处理多个变量定义，用逗号隔开
+    $$ = $1;  // 将扩展后的列表返回
+}
 ;
 
 ConstDef_list
-:TODO{}
+:ConstDef
+{
+    $$ = new std::vector<Def>;
+    ($$)->push_back($1);  // 将单个常量定义放入列表
+}
+|ConstDef_list ',' ConstDef
+{
+    ($1)->push_back($3);  // 处理多个常量定义，用逗号隔开
+    $$ = $1;  // 将扩展后的列表返回
+}
 ;
+
 
 FuncDef
 :INT IDENT '(' FuncFParams ')' Block
@@ -138,14 +167,38 @@ FuncDef
 }
 |INT IDENT '(' ')' Block
 {
-    $$ = new __FuncDef(Type::INT,$2,new std::vector<FuncFParam>(),$5); 
+    $$ = new __FuncDef(Type::INT,$2,new std::vector<FuncFParam>(),$5);
+    $$->SetLineNumber(line_number);
+}
+|FLOAT IDENT '(' FuncFParams ')' Block
+{
+    $$ = new __FuncDef(Type::FLOAT,$2,$4,$6);
+    $$->SetLineNumber(line_number);
+}
+|FLOAT IDENT '(' ')' Block
+{
+    $$ = new __FuncDef(Type::FLOAT,$2,new std::vector<FuncFParam>(),$5);
+    $$->SetLineNumber(line_number);
+}
+|NONE_TYPE IDENT '(' FuncFParams ')' Block
+{
+    $$ = new __FuncDef(Type::VOID,$2,$4,$6);
+    $$->SetLineNumber(line_number);
+}
+|NONE_TYPE IDENT '(' ')' Block
+{
+    $$ = new __FuncDef(Type::VOID,$2,new std::vector<FuncFParam>(),$5);
     $$->SetLineNumber(line_number);
 }
 ;
 // TODO(): 考虑函数定义更多情况    
 
 VarDef
-:IDENT '=' VarInitVal
+:IDENT Arr_Dim_list '=' VarInitVal
+{$$ = new VarDef($1,$2,$4); $$->SetLineNumber(line_number);}
+|IDENT Arr_Dim_list
+{$$ = new VarDef_no_init($1,$2); $$->SetLineNumber(line_number);}
+IDENT '=' VarInitVal
 {$$ = new VarDef($1,nullptr,$3); $$->SetLineNumber(line_number);}
 |IDENT
 {$$ = new VarDef_no_init($1,nullptr); $$->SetLineNumber(line_number);}
@@ -154,7 +207,10 @@ VarDef
 
 
 ConstDef
-:TODO{}
+:IDENT ConstArr_Dim_list '=' ConstInitVal
+{$$ = new ConstDef($1,$2,$4); $$->SetLineNumber(line_number);}
+|IDENT '=' ConstInitVal
+{$$ = new ConstDef($1,nullptr,$3); $$->SetLineNumber(line_number);}
 ;
 
 ConstInitVal
@@ -188,6 +244,20 @@ FuncFParams
 FuncFParam
 :INT IDENT{
     $$ = new __FuncFParam(Type::INT,$2,nullptr);
+    $$->SetLineNumber(line_number);
+}
+|FLOAT IDENT{
+    $$ = new __FuncFParam(Type::FLOAT,$2,nullptr);
+    $$->SetLineNumber(line_number);
+}
+|INT IDENT '[' ']' Arr_Dim_list{
+    $5->insert($5->begin(),nullptr);
+    $$ = new __FuncFParam(Type::INT,$2,$5);
+    $$->SetLineNumber(line_number);
+}
+|FLOAT IDENT '[' ']' Arr_Dim_list{
+    $5->insert($5->begin(),nullptr);
+    $$ = new __FuncFParam(Type::FLOAT,$2,$5);
     $$->SetLineNumber(line_number);
 }
 ;
@@ -225,8 +295,16 @@ Cond
 ;
 
 Lval
-:TODO{}
+:IDENT{
+    $$ = new Lval($1,nullptr);
+    $$->SetLineNumber(line_number);
+}
+|IDENT Arr_Dim_list{
+    $$ = new Lval($1,$2);
+    $$->SetLineNumber(line_number);
+}
 ;
+
 
 PrimaryExp
 :TODO{}
@@ -335,6 +413,40 @@ LOrExp
 
 ConstExp
 :TODO{}
+;
+
+Arr_Dim
+:'[' Exp ']'{$$ = $2;$$->SetLineNumber(line_number);}
+;
+
+Arr_Dim_list
+:Arr_Dim
+{
+    $$ = new std::vector<Expression>;
+    ($$)->push_back($1);
+}
+|Arr_Dim_list Arr_Dim
+{
+    ($1)->push_back($2);
+    $$ = $1;
+}
+;
+
+ConstArr_Dim
+:'[' ConstExp ']'{$$ = $2;$$->SetLineNumber(line_number);}
+;
+
+ConstArr_Dim_list
+:ConstArr_Dim
+{
+    $$ = new std::vector<Expression>;
+    ($$)->push_back($1);
+}
+|ConstArr_Dim_list ConstArr_Dim
+{
+    ($1)->push_back($2);
+    $$ = $1;
+}
 ;
 
 // TODO: 也许你需要添加更多的非终结符
