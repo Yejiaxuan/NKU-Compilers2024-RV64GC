@@ -214,19 +214,61 @@ ConstDef
 ;
 
 ConstInitVal
-:TODO{}
+:ConstExp
+{
+    $$ = new ConstInitVal_exp($1);
+    $$->SetLineNumber(line_number);
+}
+|'{' ConstInitVal_list '}'
+{
+    $$ = new ConstInitVal($2);
+    $$->SetLineNumber(line_number);
+}
+|'{' '}'
+{
+    $$ = new ConstInitVal(new std::vector<InitVal>());
+    $$->SetLineNumber(line_number);
+}
 ;
 
 VarInitVal
-:TODO{}
+:Exp
+{
+    $$ = new VarInitVal_exp($1);
+    $$->SetLineNumber(line_number);
+}
+|'{' VarInitVal_list '}'
+{
+    $$ = new VarInitVal($2);
+    $$->SetLineNumber(line_number);
+}
+|'{' '}'
+{
+    $$ = new VarInitVal(new std::vector<InitVal>());
+    $$->SetLineNumber(line_number);
+}
 ;
 
 ConstInitVal_list
-:TODO{}
+:ConstInitVal{
+    $$ = new std::vector<InitVal>;
+    ($$)->push_back($1);
+}
+|ConstInitVal_list ',' ConstInitVal{
+    ($1)->push_back($3);
+    $$ = $1;
+}
 ;
 
 VarInitVal_list
-:TODO{}
+:VarInitVal{
+    $$ = new std::vector<InitVal>;
+    ($$)->push_back($1);
+}
+|VarInitVal_list ',' VarInitVal{
+    ($1)->push_back($3);
+    $$ = $1;
+}
 ;
 
 
