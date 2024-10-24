@@ -62,7 +62,6 @@ Program
   FuncDef   Name:fillArray   ReturnType: Void
     FuncFParam   name:arr   Type:Int   scope:-1
       Dimensions:
-        Null dim
         Intconst   val:10   Type: Void   
 
     Block   Size:2

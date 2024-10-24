@@ -47,13 +47,14 @@ extern IdTable id_table;
 %type <func_def> FuncDef 
 %type <expression> Exp LOrExp AddExp MulExp RelExp EqExp LAndExp UnaryExp PrimaryExp
 %type <expression> ConstExp Lval FuncRParams Cond
-%type <expression> IntConst FloatConst Arr_Dim ConstArr_Dim
+%type <expression> IntConst FloatConst StringConst
+%type <expression> Arr_Dim ConstArr_Dim
 %type <expressions> Exp_list Arr_Dim_list ConstArr_Dim_list;
 %type <stmt> Stmt 
 %type <block> Block
 %type <block_item> BlockItem
 %type <block_items> BlockItem_list
-%type <initval> ConstInitVal VarInitVal  
+%type <initval> ConstInitVal VarInitVal
 %type <initvals> VarInitVal_list ConstInitVal_list
 %type <formal> FuncFParam 
 %type <formals> FuncFParams
@@ -182,29 +183,28 @@ FuncDef
 }
 |NONE_TYPE IDENT '(' FuncFParams ')' Block
 {
-    $$ = new __FuncDef(Type::VOID,$2,$4,$6);
+    $$ = new __FuncDef(Type::VOID, $2, $4, $6);
     $$->SetLineNumber(line_number);
 }
 |NONE_TYPE IDENT '(' ')' Block
 {
-    $$ = new __FuncDef(Type::VOID,$2,new std::vector<FuncFParam>(),$5);
+    $$ = new __FuncDef(Type::VOID, $2, new std::vector<FuncFParam>(), $5);
     $$->SetLineNumber(line_number);
 }
 ;
 // TODO(): 考虑函数定义更多情况    
 
 VarDef
-:IDENT Arr_Dim_list '=' VarInitVal
-{$$ = new VarDef($1,$2,$4); $$->SetLineNumber(line_number);}
-|IDENT Arr_Dim_list
-{$$ = new VarDef_no_init($1,$2); $$->SetLineNumber(line_number);}
-IDENT '=' VarInitVal
-{$$ = new VarDef($1,nullptr,$3); $$->SetLineNumber(line_number);}
-|IDENT
-{$$ = new VarDef_no_init($1,nullptr); $$->SetLineNumber(line_number);}
-;   
+: IDENT Arr_Dim_list '=' VarInitVal
+{ $$ = new VarDef($1, $2, $4); $$->SetLineNumber(line_number); }
+| IDENT Arr_Dim_list
+{ $$ = new VarDef_no_init($1, $2); $$->SetLineNumber(line_number); }
+| IDENT '=' VarInitVal
+{ $$ = new VarDef($1, nullptr, $3); $$->SetLineNumber(line_number); }
+| IDENT
+{ $$ = new VarDef_no_init($1, nullptr); $$->SetLineNumber(line_number); }
+;
 // TODO(): 考虑变量定义更多情况
-
 
 ConstDef
 :IDENT ConstArr_Dim_list '=' ConstInitVal
@@ -214,21 +214,66 @@ ConstDef
 ;
 
 ConstInitVal
-:TODO{}
+: ConstExp
+{ 
+    $$ = new ConstInitVal_exp($1); 
+    $$->SetLineNumber(line_number); 
+}
+| '{' '}'
+{ 
+    $$ = new ConstInitVal(new std::vector<InitVal>()); 
+    $$->SetLineNumber(line_number); 
+}
+| '{' ConstInitVal_list '}'
+{ 
+    $$ = new ConstInitVal($2);
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 VarInitVal
-:TODO{}
+: Exp
+{
+    $$ = new VarInitVal_exp($1); 
+    $$->SetLineNumber(line_number); 
+}
+| '{' '}'
+{ 
+    $$ = new VarInitVal(new std::vector<InitVal>()); 
+    $$->SetLineNumber(line_number); 
+}
+| '{' VarInitVal_list '}'
+{ 
+    $$ = new VarInitVal($2); 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 ConstInitVal_list
-:TODO{}
+:ConstInitVal
+{
+    $$ = new std::vector<InitVal>;
+    ($$)->push_back($1);
+}
+|ConstInitVal_list ',' ConstInitVal
+{
+    ($1)->push_back($3);
+    $$ = $1;
+}
 ;
 
 VarInitVal_list
-:TODO{}
+: VarInitVal
+{
+    $$ = new std::vector<InitVal>;
+    ($$)->push_back($1);
+}
+| VarInitVal_list ',' VarInitVal
+{
+    ($1)->push_back($3);
+    $$ = $1;
+}
 ;
-
 
 FuncFParams
 :FuncFParam{
@@ -242,20 +287,38 @@ FuncFParams
 ;
 
 FuncFParam
-:INT IDENT{
+:INT IDENT
+{
     $$ = new __FuncFParam(Type::INT,$2,nullptr);
     $$->SetLineNumber(line_number);
 }
-|FLOAT IDENT{
+|FLOAT IDENT
+{
     $$ = new __FuncFParam(Type::FLOAT,$2,nullptr);
     $$->SetLineNumber(line_number);
 }
-|INT IDENT '[' ']' Arr_Dim_list{
+| INT IDENT '[' ']'
+{
+    auto dims = new std::vector<Expression>;
+    dims->push_back(nullptr); // 表示第一维是空的
+    $$ = new __FuncFParam(Type::INT, $2, dims);
+    $$->SetLineNumber(line_number);
+}
+| FLOAT IDENT '[' ']'
+{
+    auto dims = new std::vector<Expression>;
+    dims->push_back(nullptr); // 表示第一维是空的
+    $$ = new __FuncFParam(Type::FLOAT, $2, dims);
+    $$->SetLineNumber(line_number);
+}
+|INT IDENT '[' ']' Arr_Dim_list
+{
     $5->insert($5->begin(),nullptr);
     $$ = new __FuncFParam(Type::INT,$2,$5);
     $$->SetLineNumber(line_number);
 }
-|FLOAT IDENT '[' ']' Arr_Dim_list{
+|FLOAT IDENT '[' ']' Arr_Dim_list
+{
     $5->insert($5->begin(),nullptr);
     $$ = new __FuncFParam(Type::FLOAT,$2,$5);
     $$->SetLineNumber(line_number);
@@ -275,15 +338,83 @@ Block
 ;
 
 BlockItem_list
-:TODO{}
+:BlockItem{
+    $$ = new std::vector<BlockItem>;
+    $$->push_back($1);
+}
+|BlockItem_list BlockItem{
+    ($1)->push_back($2);
+    $$ = $1;
+}
 ;
 
 BlockItem
-:TODO{}
+:Decl{
+    $$ = new BlockItem_Decl($1);
+    $$->SetLineNumber(line_number);
+}
+|Stmt{
+    $$ = new BlockItem_Stmt($1);
+    $$->SetLineNumber(line_number);
+}
 ;
 
 Stmt
-:TODO{}
+: Lval '=' Exp ';'
+{ 
+    $$ = new assign_stmt($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
+| Exp ';'
+{ 
+    $$ = new expr_stmt($1); 
+    $$->SetLineNumber(line_number); 
+}
+| ';'
+{ 
+    $$ = new null_stmt(); 
+    $$->SetLineNumber(line_number); 
+}
+| Block
+{ 
+    $$ = new block_stmt($1); 
+    $$->SetLineNumber(line_number); 
+}
+| IF '(' Cond ')' Stmt %prec THEN
+{ 
+    $$ = new if_stmt($3, $5); 
+    $$->SetLineNumber(line_number); 
+}
+| IF '(' Cond ')' Stmt ELSE Stmt
+{ 
+    $$ = new ifelse_stmt($3, $5, $7); 
+    $$->SetLineNumber(line_number); 
+}
+| WHILE '(' Cond ')' Stmt
+{ 
+    $$ = new while_stmt($3, $5); 
+    $$->SetLineNumber(line_number); 
+}
+| BREAK ';'
+{ 
+    $$ = new break_stmt(); 
+    $$->SetLineNumber(line_number); 
+}
+| CONTINUE ';'
+{ 
+    $$ = new continue_stmt(); 
+    $$->SetLineNumber(line_number); 
+}
+| RETURN ';'
+{
+    $$ = new return_stmt_void();
+    $$->SetLineNumber(line_number);
+}
+| RETURN Exp ';'
+{ 
+    $$ = new return_stmt($2); 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 Exp
@@ -307,7 +438,31 @@ Lval
 
 
 PrimaryExp
-:TODO{}
+: '(' Exp ')' 
+{
+    $$ = new PrimaryExp_branch($2);
+    $$->SetLineNumber(line_number); 
+}
+| Lval 
+{
+    $$ = $1;
+    $$->SetLineNumber(line_number);
+}
+| IntConst 
+{
+    $$ = $1;
+    $$->SetLineNumber(line_number);
+}
+| FloatConst 
+{
+    $$ = $1;
+    $$->SetLineNumber(line_number);
+}
+| StringConst
+{
+    $$ = $1;
+    $$->SetLineNumber(line_number);
+}
 ;
 
 IntConst
@@ -320,6 +475,14 @@ IntConst
 FloatConst
 :FLOAT_CONST{
     $$ = new FloatConst($1);
+    $$->SetLineNumber(line_number);
+}
+;
+
+StringConst
+: STR_CONST
+{
+    $$ = new StringConst($1);
     $$->SetLineNumber(line_number);
 }
 ;
@@ -369,15 +532,47 @@ UnaryExp
 ;
 
 FuncRParams
-:TODO{}
+: Exp_list
+{ 
+    $$ = new FuncRParams($1); 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 Exp_list
-:TODO{}
+: Exp
+{
+    $$ = new std::vector<Expression>;
+    ($$)->push_back($1);
+}
+| Exp_list ',' Exp
+{
+    ($1)->push_back($3);
+    $$ = $1;
+}
 ;
 
 MulExp
-:TODO{}
+: UnaryExp
+{ 
+    $$ = $1; 
+    $$->SetLineNumber(line_number); 
+}
+| MulExp '*' UnaryExp
+{ 
+    $$ = new MulExp_mul($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
+| MulExp '/' UnaryExp
+{ 
+    $$ = new MulExp_div($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
+| MulExp '%' UnaryExp
+{ 
+    $$ = new MulExp_mod($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 AddExp
@@ -396,23 +591,83 @@ AddExp
 ;
 
 RelExp
-:TODO{}
+: AddExp
+{ 
+    $$ = $1; 
+    $$->SetLineNumber(line_number); 
+}
+| RelExp '<' AddExp
+{ 
+    $$ = new RelExp_lt($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
+| RelExp '>' AddExp
+{ 
+    $$ = new RelExp_gt($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
+| RelExp LEQ AddExp
+{ 
+    $$ = new RelExp_leq($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
+| RelExp GEQ AddExp
+{ 
+    $$ = new RelExp_geq($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 EqExp
-:TODO{}
+: RelExp
+{ 
+    $$ = $1; 
+    $$->SetLineNumber(line_number); 
+}
+| EqExp EQ RelExp
+{ 
+    $$ = new EqExp_eq($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
+| EqExp NE RelExp
+{ 
+    $$ = new EqExp_neq($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 LAndExp
-:TODO{}
+: EqExp
+{ 
+    $$ = $1; 
+    $$->SetLineNumber(line_number); 
+}
+| LAndExp AND EqExp
+{ 
+    $$ = new LAndExp_and($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 LOrExp
-:TODO{}
+: LAndExp
+{ 
+    $$ = $1; 
+    $$->SetLineNumber(line_number); 
+}
+| LOrExp OR LAndExp
+{ 
+    $$ = new LOrExp_or($1, $3); 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 ConstExp
-:TODO{}
+: AddExp
+{ 
+    $$ = $1; 
+    $$->SetLineNumber(line_number); 
+}
 ;
 
 Arr_Dim
