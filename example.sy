@@ -1,39 +1,21 @@
-// 常量声明
-const int a = 5;
-const float b = 3.14;
-
-// 变量声明和初始化
-int x[10] = {1, 2, 3, 4, 5};
-float y;
-
-// 函数定义
-int add(int a, int b) {
-    return a + b;
-}
-
-// 带有条件语句的函数定义
-int max(int a, int b) {
-    if (a > b) {
-        return a;
-    } else {
-        return b;
+int main () {
+    int a;
+    int b = 5----12*11/6+-3;
+    int c = 123++++55-+-+-9961;
+    int d = -2, result = 2, useless = 13;
+    if(d)if(d)if(d);else;else
+    if ((d * 1 / 2) < 0 || (a - b) != 0 && (c + 3) % 2 != 0) {
+        while(1){}if(1){}
+        putint(result);
     }
-}
-
-// 带有循环语句的函数定义
-void fillArray(int arr[][10]) {
-    int i = 0;
-    while (i < 10) {
-        arr[i] = i * i;
-        i = i + 1;
+    if ((d % 2 + 67) < 0 || (a - b) != 0 && (c + 2) % 2 != 0) {
+        while(1);
+        if(0);
+        while(1){
+            putint(-1--0x80000000);
+        }
+        result = 4;
+        putint(result);
     }
-}
-
-// 主函数
-int main() {
-    int result = add(10, 20);
-    int maximum = max(15, 30);
-    int arr[10];
-    fillArray(arr);
-    return result + maximum;
+    return 0;
 }
