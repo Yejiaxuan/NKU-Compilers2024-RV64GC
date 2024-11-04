@@ -58,6 +58,17 @@ void AddExp_plus::TypeCheck() {
         }
     }
 
+    // 处理常量折叠
+    attribute.V.ConstTag = addexp->attribute.V.ConstTag && mulexp->attribute.V.ConstTag;
+    if (attribute.V.ConstTag) {
+        if (attribute.T.type == Type::INT) {
+            attribute.V.val.IntVal = addexp->attribute.V.val.IntVal + mulexp->attribute.V.val.IntVal;
+        } else {
+            attribute.V.val.FloatVal = (addexp->attribute.T.type == Type::INT ? addexp->attribute.V.val.IntVal : addexp->attribute.V.val.FloatVal)
+                                     + (mulexp->attribute.T.type == Type::INT ? mulexp->attribute.V.val.IntVal : mulexp->attribute.V.val.FloatVal);
+        }
+    }
+
     TODO("BinaryExp Semant");
 }
 
@@ -78,6 +89,17 @@ void AddExp_sub::TypeCheck() {
         }
     }
 
+    // 常量折叠
+    attribute.V.ConstTag = addexp->attribute.V.ConstTag && mulexp->attribute.V.ConstTag;
+    if (attribute.V.ConstTag) {
+        if (attribute.T.type == Type::INT) {
+            attribute.V.val.IntVal = addexp->attribute.V.val.IntVal - mulexp->attribute.V.val.IntVal;
+        } else {
+            attribute.V.val.FloatVal = (addexp->attribute.T.type == Type::INT ? addexp->attribute.V.val.IntVal : addexp->attribute.V.val.FloatVal)
+                                     - (mulexp->attribute.T.type == Type::INT ? mulexp->attribute.V.val.IntVal : mulexp->attribute.V.val.FloatVal);
+        }
+    }
+
     TODO("BinaryExp Semant");
 }
 
@@ -95,6 +117,17 @@ void MulExp_mul::TypeCheck() {
             attribute.T.type = Type::FLOAT;
         } else {
             attribute.T.type = Type::INT;
+        }
+    }
+
+    // 常量折叠
+    attribute.V.ConstTag = mulexp->attribute.V.ConstTag && unary_exp->attribute.V.ConstTag;
+    if (attribute.V.ConstTag) {
+        if (attribute.T.type == Type::INT) {
+            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal * unary_exp->attribute.V.val.IntVal;
+        } else {
+            attribute.V.val.FloatVal = (mulexp->attribute.T.type == Type::INT ? mulexp->attribute.V.val.IntVal : mulexp->attribute.V.val.FloatVal)
+                                     * (unary_exp->attribute.T.type == Type::INT ? unary_exp->attribute.V.val.IntVal : unary_exp->attribute.V.val.FloatVal);
         }
     }
 
@@ -126,6 +159,17 @@ void MulExp_div::TypeCheck() {
         }
     }
 
+    // 常量折叠
+    attribute.V.ConstTag = mulexp->attribute.V.ConstTag && unary_exp->attribute.V.ConstTag;
+    if (attribute.V.ConstTag) {
+        if (attribute.T.type == Type::INT) {
+            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal / unary_exp->attribute.V.val.IntVal;
+        } else {
+            attribute.V.val.FloatVal = (mulexp->attribute.T.type == Type::INT ? mulexp->attribute.V.val.IntVal : mulexp->attribute.V.val.FloatVal)
+                                     / (unary_exp->attribute.T.type == Type::INT ? unary_exp->attribute.V.val.IntVal : unary_exp->attribute.V.val.FloatVal);
+        }
+    }
+
     TODO("BinaryExp Semant");
 }
 
@@ -147,6 +191,12 @@ void MulExp_mod::TypeCheck() {
     // 检查除以0的情况（模运算除数为0）
     if (unary_exp->attribute.V.ConstTag && unary_exp->attribute.V.val.IntVal == 0) {
         error_msgs.push_back("Modulo by zero at line " + std::to_string(line_number) + "\n");
+    }
+
+    // 常量折叠
+    attribute.V.ConstTag = mulexp->attribute.V.ConstTag && unary_exp->attribute.V.ConstTag;
+    if (attribute.V.ConstTag) {
+        attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal % unary_exp->attribute.V.val.IntVal;
     }
 
     TODO("BinaryExp Semant");
@@ -218,9 +268,67 @@ void ConstExp::TypeCheck() {
 
 void Lval::TypeCheck() { TODO("Lval Semant"); }
 
-void FuncRParams::TypeCheck() { TODO("FuncRParams Semant"); }
+void FuncRParams::TypeCheck() { 
+    auto param_vector = *params;
+    for (auto param : param_vector) {
+        param->TypeCheck();
+    }
+    
+    TODO("FuncRParams Semant"); 
+}
 
-void Func_call::TypeCheck() { TODO("FunctionCall Semant"); }
+void Func_call::TypeCheck() { 
+    // 首先检查函数是否已声明
+    auto func_name = name->get_string();
+    if (semant_table.FunctionTable.find(func_name) == semant_table.FunctionTable.end()) {
+        error_msgs.push_back("Undeclared function '" + func_name + "' at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT; // 假设返回类型为 int，继续分析
+    } else {
+        // 函数已声明
+        auto func_def = semant_table.FunctionTable[func_name];
+        auto& func_formals = *(func_def->formals); // __FuncFParam* 的向量
+
+        // 对实参进行类型检查
+        std::vector<Exp*> args_vector;
+        if (params != nullptr) {
+            params->TypeCheck(); // 对所有参数进行类型检查
+            args_vector = *(params->param_list);
+        }
+
+        // 检查参数数量是否匹配
+        if (args_vector.size() != func_formals.size()) {
+            error_msgs.push_back("Function '" + func_name + "' called with incorrect number of arguments at line " + std::to_string(line_number) + "\n");
+        } else {
+            // 检查每个参数的类型
+            for (size_t i = 0; i < args_vector.size(); ++i) {
+                // 实参已在 FuncRParams::TypeCheck() 中进行了类型检查
+                // 获取形式参数的类型
+                auto formal_param = func_formals[i];
+                Type formal_type = formal_param->attribute.T.type;
+
+                // 获取实际参数的类型
+                Type arg_type = args_vector[i]->attribute.T.type;
+
+                // 比较类型，考虑类型提升（如 int 到 float）
+                if (formal_type != arg_type) {
+                    if (formal_type == Type::FLOAT && arg_type == Type::INT) {
+                        // int 可以提升为 float，不报错
+                    } else if (formal_type == Type::INT && arg_type == Type::FLOAT) {
+                        // float 到 int 可能有问题
+                        error_msgs.push_back("Type mismatch in argument " + std::to_string(i+1) + " of function '" + func_name + "' at line " + std::to_string(line_number) + ": expected int, got float\n");
+                    } else {
+                        // 类型不匹配
+                        error_msgs.push_back("Type mismatch in argument " + std::to_string(i+1) + " of function '" + func_name + "' at line " + std::to_string(line_number) + "\n");
+                    }
+                }
+            }
+        }
+
+        // 将 attribute.T.type 设置为函数的返回类型
+        attribute.T.type = func_def->type_decl; // 假设 type_decl 是函数的返回类型
+    }
+    TODO("FunctionCall Semant"); 
+}
 
 void UnaryExp_plus::TypeCheck() { 
 
@@ -231,6 +339,9 @@ void UnaryExp_plus::TypeCheck() {
     } else {
         attribute.T.type = unary_exp->attribute.T.type;
     }
+
+    // 常量折叠
+    attribute.V = unary_exp->attribute.V;
 
     TODO("UnaryExp Semant"); 
 }
@@ -244,6 +355,16 @@ void UnaryExp_neg::TypeCheck() {
         attribute.T.type = unary_exp->attribute.T.type;
     }
 
+    // 常量折叠
+    attribute.V.ConstTag = unary_exp->attribute.V.ConstTag;
+    if (attribute.V.ConstTag) {
+        if (attribute.T.type == Type::INT) {
+            attribute.V.val.IntVal = -unary_exp->attribute.V.val.IntVal;
+        } else {
+            attribute.V.val.FloatVal = -unary_exp->attribute.V.val.FloatVal;
+        }
+    }
+
     TODO("UnaryExp Semant"); 
 }
 
@@ -254,6 +375,12 @@ void UnaryExp_not::TypeCheck() {
         attribute.T.type = Type::INT;
     } else {
         attribute.T.type = Type::INT; // 逻辑非运算结果为int类型
+    }
+
+    // 常量折叠
+    attribute.V.ConstTag = unary_exp->attribute.V.ConstTag;
+    if (attribute.V.ConstTag) {
+        attribute.V.val.IntVal = !unary_exp->attribute.V.val.IntVal;
     }
     
     TODO("UnaryExp Semant"); 
