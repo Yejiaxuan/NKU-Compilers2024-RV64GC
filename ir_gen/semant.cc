@@ -45,12 +45,38 @@ void AddExp_plus::TypeCheck() {
     addexp->TypeCheck();
     mulexp->TypeCheck();
 
+    // 检查运算数类型是否为void
+    if (addexp->attribute.T.type == Type::VOID || mulexp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("Addition error on void type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT; // 继续分析，假设结果类型为int
+    } else {
+        // 类型提升（int和float）
+        if (addexp->attribute.T.type == Type::FLOAT || mulexp->attribute.T.type == Type::FLOAT) {
+            attribute.T.type = Type::FLOAT;
+        } else {
+            attribute.T.type = Type::INT;
+        }
+    }
+
     TODO("BinaryExp Semant");
 }
 
 void AddExp_sub::TypeCheck() {
     addexp->TypeCheck();
     mulexp->TypeCheck();
+
+    // 检查运算数类型是否为void
+    if (addexp->attribute.T.type == Type::VOID || mulexp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("Subtraction error on void type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT;
+    } else {
+        // 类型提升
+        if (addexp->attribute.T.type == Type::FLOAT || mulexp->attribute.T.type == Type::FLOAT) {
+            attribute.T.type = Type::FLOAT;
+        } else {
+            attribute.T.type = Type::INT;
+        }
+    }
 
     TODO("BinaryExp Semant");
 }
@@ -59,6 +85,19 @@ void MulExp_mul::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
 
+    // 检查运算数类型是否为void
+    if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("Multiplication error on void type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT;
+    } else {
+        // 类型提升
+        if (mulexp->attribute.T.type == Type::FLOAT || unary_exp->attribute.T.type == Type::FLOAT) {
+            attribute.T.type = Type::FLOAT;
+        } else {
+            attribute.T.type = Type::INT;
+        }
+    }
+
     TODO("BinaryExp Semant");
 }
 
@@ -66,12 +105,49 @@ void MulExp_div::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
 
+    // 检查运算数类型是否为void
+    if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("Division error on void type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT;
+    } else {
+        // 类型提升
+        if (mulexp->attribute.T.type == Type::FLOAT || unary_exp->attribute.T.type == Type::FLOAT) {
+            attribute.T.type = Type::FLOAT;
+        } else {
+            attribute.T.type = Type::INT;
+        }
+    }
+
+    // 检查除以0的情况
+    if (unary_exp->attribute.V.ConstTag) {
+        if ((unary_exp->attribute.T.type == Type::INT && unary_exp->attribute.V.val.IntVal == 0) ||
+            (unary_exp->attribute.T.type == Type::FLOAT && unary_exp->attribute.V.val.FloatVal == 0.0f)) {
+            error_msgs.push_back("Division by zero at line " + std::to_string(line_number) + "\n");
+        }
+    }
+
     TODO("BinaryExp Semant");
 }
 
 void MulExp_mod::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
+
+    // 检查运算数类型是否为void或float（模运算不支持float）
+    if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("Modulo error on void type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT;
+    } else if (mulexp->attribute.T.type == Type::FLOAT || unary_exp->attribute.T.type == Type::FLOAT) {
+        error_msgs.push_back("Modulo error on float type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT;
+    } else {
+        attribute.T.type = Type::INT;
+    }
+
+    // 检查除以0的情况（模运算除数为0）
+    if (unary_exp->attribute.V.ConstTag && unary_exp->attribute.V.val.IntVal == 0) {
+        error_msgs.push_back("Modulo by zero at line " + std::to_string(line_number) + "\n");
+    }
 
     TODO("BinaryExp Semant");
 }
@@ -146,11 +222,42 @@ void FuncRParams::TypeCheck() { TODO("FuncRParams Semant"); }
 
 void Func_call::TypeCheck() { TODO("FunctionCall Semant"); }
 
-void UnaryExp_plus::TypeCheck() { TODO("UnaryExp Semant"); }
+void UnaryExp_plus::TypeCheck() { 
 
-void UnaryExp_neg::TypeCheck() { TODO("UnaryExp Semant"); }
+    // 检查运算数类型是否为void
+    if (unary_exp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("UnaryExp_plus error on void type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT;
+    } else {
+        attribute.T.type = unary_exp->attribute.T.type;
+    }
 
-void UnaryExp_not::TypeCheck() { TODO("UnaryExp Semant"); }
+    TODO("UnaryExp Semant"); 
+}
+
+void UnaryExp_neg::TypeCheck() { 
+    // 检查运算数类型是否为void
+    if (unary_exp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("UnaryExp_neg error on void type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT;
+    } else {
+        attribute.T.type = unary_exp->attribute.T.type;
+    }
+
+    TODO("UnaryExp Semant"); 
+}
+
+void UnaryExp_not::TypeCheck() { 
+    // 检查运算数类型是否为void
+    if (unary_exp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("UnaryExp_not error not on void type at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT;
+    } else {
+        attribute.T.type = Type::INT; // 逻辑非运算结果为int类型
+    }
+    
+    TODO("UnaryExp Semant"); 
+}
 
 void IntConst::TypeCheck() {
     attribute.T.type = Type::INT;
