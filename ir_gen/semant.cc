@@ -277,58 +277,67 @@ void FuncRParams::TypeCheck() {
     TODO("FuncRParams Semant"); 
 }
 
-void Func_call::TypeCheck() { 
-    // 首先检查函数是否已声明
-    auto func_name = name->get_string();
-    if (semant_table.FunctionTable.find(func_name) == semant_table.FunctionTable.end()) {
-        error_msgs.push_back("Undeclared function '" + func_name + "' at line " + std::to_string(line_number) + "\n");
+// 辅助函数，将 Type::ty 枚举转换为字符串表示
+std::string type_to_string(Type::ty type) {
+    switch (type) {
+        case Type::VOID: return "void";
+        case Type::INT: return "int";
+        case Type::FLOAT: return "float";
+        case Type::BOOL: return "bool";
+        case Type::PTR: return "ptr";
+        case Type::DOUBLE: return "double";
+        default: return "unknown";
+    }
+}
+
+void Func_call::TypeCheck() {
+    // 获取函数的定义
+    auto it = semant_table.FunctionTable.find(name);
+    if (it == semant_table.FunctionTable.end()) {
+        error_msgs.push_back("Error: Function '" + name->get_string() + "' is not defined at line " +
+                             std::to_string(line_number) + "\n");
         attribute.T.type = Type::INT; // 假设返回类型为 int，继续分析
-    } else {
-        // 函数已声明
-        auto func_def = semant_table.FunctionTable[func_name];
-        auto& func_formals = *(func_def->formals); // __FuncFParam* 的向量
+        return;
+    }
 
-        // 对实参进行类型检查
-        std::vector<Exp*> args_vector;
-        if (params != nullptr) {
-            params->TypeCheck(); // 对所有参数进行类型检查
-            args_vector = *(params->param_list);
-        }
+    auto func_def = it->second; // 获取函数定义
 
-        // 检查参数数量是否匹配
-        if (args_vector.size() != func_formals.size()) {
-            error_msgs.push_back("Function '" + func_name + "' called with incorrect number of arguments at line " + std::to_string(line_number) + "\n");
-        } else {
-            // 检查每个参数的类型
-            for (size_t i = 0; i < args_vector.size(); ++i) {
-                // 实参已在 FuncRParams::TypeCheck() 中进行了类型检查
-                // 获取形式参数的类型
-                auto formal_param = func_formals[i];
-                Type formal_type = formal_param->attribute.T.type;
+    // 检查实参数量是否匹配
+    size_t params_count = 0;
+    if (funcr_params != nullptr) {
+        auto func_r_params = static_cast<FuncRParams*>(funcr_params);
+        if (func_r_params->params != nullptr) {
+            params_count = func_r_params->params->size(); // 获取参数数量
 
-                // 获取实际参数的类型
-                Type arg_type = args_vector[i]->attribute.T.type;
+            if (params_count != func_def->formals->size()) {
+                error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() + 
+                                     "' at line " + std::to_string(line_number) + "\n");
+            }
 
-                // 比较类型，考虑类型提升（如 int 到 float）
-                if (formal_type != arg_type) {
-                    if (formal_type == Type::FLOAT && arg_type == Type::INT) {
-                        // int 可以提升为 float，不报错
-                    } else if (formal_type == Type::INT && arg_type == Type::FLOAT) {
-                        // float 到 int 可能有问题
-                        error_msgs.push_back("Type mismatch in argument " + std::to_string(i+1) + " of function '" + func_name + "' at line " + std::to_string(line_number) + ": expected int, got float\n");
-                    } else {
-                        // 类型不匹配
-                        error_msgs.push_back("Type mismatch in argument " + std::to_string(i+1) + " of function '" + func_name + "' at line " + std::to_string(line_number) + "\n");
-                    }
+            // 遍历实参并进行类型匹配
+            for (size_t i = 0; i < params_count; ++i) {
+                // 对实参进行类型检查
+                (*func_r_params->params)[i]->TypeCheck(); // 访问实际参数
+
+                auto expected_type = func_def->formals->at(i)->attribute.T; // 获取形参的完整 Type 对象
+                auto actual_type = (*func_r_params->params)[i]->attribute.T;
+
+                // 检查实参类型与形参类型是否一致
+                if (actual_type.type != expected_type.type) {
+                    error_msgs.push_back("Error: Type mismatch for argument " + std::to_string(i) +
+                                         " in function call '" + name->get_string() + "' (expected " + 
+                                         type_to_string(expected_type.type) + ", got " + 
+                                         type_to_string(actual_type.type) + ") at line " + 
+                                         std::to_string(line_number) + "\n");
                 }
             }
         }
-
-        // 将 attribute.T.type 设置为函数的返回类型
-        attribute.T.type = func_def->type_decl; // 假设 type_decl 是函数的返回类型
     }
-    TODO("FunctionCall Semant"); 
+
+    // 设置返回类型为函数定义的返回类型
+    attribute.T.type = func_def->attribute.T.type;
 }
+
 
 void UnaryExp_plus::TypeCheck() { 
 
