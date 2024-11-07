@@ -33,9 +33,11 @@ void __Program::TypeCheck() {
     for (auto comp : comp_vector) {
         comp->TypeCheck();
     }
+    //没有main函数
     if (!MainFlag) {
         error_msgs.push_back("main function does not exist.\n");
     }
+    semant_table.symbol_table.exit_scope();
 }
 
 void Exp::TypeCheck() {
@@ -1077,13 +1079,15 @@ void VarDef_no_init::TypeCheck() {
     //TODO("VarDefNoInit Semant"); 
 }
 
-void VarDef::TypeCheck() { 
+void VarDef::TypeCheck() {
+    int local_scope = semant_table.symbol_table.lookup_scope(name);
     // 检查是否在当前作用域中重复定义
-    if (semant_table.symbol_table.lookup_scope(name) == semant_table.symbol_table.get_current_scope()) {
-        error_msgs.push_back("Variable '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
-        return; // 如果重复定义，直接返回
+    if (local_scope == -1) {
+        if (semant_table.GlobalTable.find(name) != semant_table.GlobalTable.end()) {
+            // 错误：全局作用域中已有同名变量
+            error_msgs.push_back("Variable '" + name->get_string() + "' is already defined globally at line " + std::to_string(line_number) + "\n");
+        }
     }
-
     // 检查数组维度是否合法
     if (dims != nullptr) {
         for (auto d : *dims) {
@@ -1120,6 +1124,9 @@ void VarDef::TypeCheck() {
 }
 
 void ConstDef::TypeCheck() { 
+    if (attribute.T.type == Type::VOID) {
+        attribute.T.type = Type::INT;  // 假设常量的声明类型为 int
+    }
     // 检查是否在当前作用域中重复定义
     if (semant_table.symbol_table.lookup_scope(name) == semant_table.symbol_table.get_current_scope()) {
         error_msgs.push_back("Constant '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
@@ -1138,24 +1145,22 @@ void ConstDef::TypeCheck() {
             }
         }
     }
-
-    // 检查并处理初始化值（如果有初始化）
+    VarAttribute const_attr;
+    const_attr.type = attribute.T.type;
+    const_attr.ConstTag = true;
+    // 如果有初始化值，检查初始化值的类型是否匹配
     if (init != nullptr) {
         init->TypeCheck();
 
+        // 确保初始化值为常量表达式
         if (!init->attribute.V.ConstTag) {
             error_msgs.push_back("Initializer for constant '" + name->get_string() + "' must be a constant expression at line " + std::to_string(line_number) + "\n");
-        }
-
-        if (init->attribute.T.type != attribute.T.type) {
+        } else if (init->attribute.T.type != const_attr.type) {
+            // 只有在初始化值存在且类型不匹配时，才输出类型不匹配的错误
             error_msgs.push_back("Type mismatch in initializer for constant '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
         }
     }
 
-    // 将常量添加到符号表中
-    VarAttribute const_attr;
-    const_attr.type = attribute.T.type;
-    const_attr.ConstTag = true;
     if (dims != nullptr) {
         for (auto d : *dims) {
             const_attr.dims.push_back(d->attribute.V.val.IntVal); // 存储数组维度

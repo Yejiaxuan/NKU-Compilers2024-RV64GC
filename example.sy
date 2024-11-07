@@ -2,3 +2,6 @@ int b = 7;
 int a = 5;
 int a = 13;
 int c = 55;
+const int d = 10;
+const int e = 20;
+const int d = 15;          // 重复定义
