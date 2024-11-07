@@ -933,15 +933,15 @@ void assign_stmt::TypeCheck() {
     Type::ty left_type = lval->attribute.T.type;
     Type::ty right_type = exp->attribute.T.type;
 
-    // 检查右值是否为 VOID 类型
-    if (right_type == Type::VOID) {
-        error_msgs.push_back("Cannot assign a value of type 'void' at line " + std::to_string(line_number) + "\n");
+    // 检查左值是否为常量，常量不能被赋值
+    if (lval->attribute.V.ConstTag) {
+        error_msgs.push_back("Error: Left-hand side cannot be a constant at line " + std::to_string(line_number) + "\n");
         return;
     }
 
-    // 检查左值是否为常量，常量不能被赋值
-    if (lval->attribute.V.ConstTag) {
-        error_msgs.push_back("Cannot assign to constant at line " + std::to_string(line_number) + "\n");
+    // 检查右值是否为 VOID 类型
+    if (right_type == Type::VOID) {
+        error_msgs.push_back("Error: Right-hand side cannot be of type 'void' at line " + std::to_string(line_number) + "\n");
         return;
     }
 
@@ -949,19 +949,21 @@ void assign_stmt::TypeCheck() {
     if (left_type != right_type) {
         // 允许 int 转换为 bool
         if (left_type == Type::BOOL && right_type == Type::INT) {
-            error_msgs.push_back("Implicit conversion from 'int' to 'bool' in assignment at line " + std::to_string(line_number) + "\n");
+            // 设置赋值语句类型为左值的类型
+            attribute.T.type = left_type;
+            attribute.V.ConstTag = false;
         }
         // 允许 bool 转换为 int
         else if (left_type == Type::INT && right_type == Type::BOOL) {
-            error_msgs.push_back("Implicit conversion from 'bool' to 'int' in assignment at line " + std::to_string(line_number) + "\n");
+            // 设置赋值语句类型为左值的类型
+            attribute.T.type = left_type;
+            attribute.V.ConstTag = false;
         } else {
-            error_msgs.push_back("Type mismatch in assignment at line " + std::to_string(line_number) + "\n");
+            error_msgs.push_back("Error: Type mismatch in assignment at line " + std::to_string(line_number) + "\n");
+            return;
         }
     }
 
-    // 设置赋值语句类型为左值的类型
-    attribute.T.type = left_type;
-    attribute.V.ConstTag = false;  // 赋值结果不是常量
     //TODO("AssignStmt Semant"); 
 }
 
@@ -1015,6 +1017,9 @@ void ConstInitVal::TypeCheck() {
 }
 
 void ConstInitVal_exp::TypeCheck() { 
+    if (exp == nullptr) {
+        return;
+    }
     exp->TypeCheck();
     attribute = exp->attribute;
     // 检查表达式是否为常量
@@ -1030,18 +1035,21 @@ void VarInitVal::TypeCheck() {
         
         // 检查每个初始化值的类型是否匹配变量的类型（例如int、float等）
         if (init_val->attribute.T.type != attribute.T.type) {
-            error_msgs.push_back("Type mismatch in VarInitVal initializer at line " + std::to_string(line_number) + "\n");
+            error_msgs.push_back("Error: Type mismatch in VarInitVal initializer at line " + std::to_string(line_number) + "\n");
         }
     }
     //TODO("VarInitVal Semant"); 
 }
 
 void VarInitVal_exp::TypeCheck() { 
+    if (exp == nullptr) {
+        return;
+    }
     exp->TypeCheck();
     attribute = exp->attribute;
-    // 检查初始化值的类型是否匹配变量的类型
-    if (exp->attribute.T.type != attribute.T.type) {
-        error_msgs.push_back("Type mismatch in initializer expression for VarInitVal_exp at line " + std::to_string(line_number) + "\n");
+    // 检查初始化值的类型是否为 void
+    if (attribute.T.type == Type::VOID) {
+        error_msgs.push_back("Error: Variable initializer expression cannot be of type void at line " + std::to_string(line_number) + "\n");
     }
     //TODO("VarInitValExp Semant"); 
 }
@@ -1080,13 +1088,12 @@ void VarDef_no_init::TypeCheck() {
 }
 
 void VarDef::TypeCheck() {
-    int local_scope = semant_table.symbol_table.lookup_scope(name);
+    int current_scope = semant_table.symbol_table.get_current_scope();
     // 检查是否在当前作用域中重复定义
-    if (local_scope == -1) {
-        if (semant_table.GlobalTable.find(name) != semant_table.GlobalTable.end()) {
-            // 错误：全局作用域中已有同名变量
-            error_msgs.push_back("Variable '" + name->get_string() + "' is already defined globally at line " + std::to_string(line_number) + "\n");
-        }
+    if (semant_table.symbol_table.lookup_scope(name) == current_scope)  {
+        // 错误：全局作用域中已有同名变量
+        error_msgs.push_back("Variable '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
+        return;
     }
     // 检查数组维度是否合法
     if (dims != nullptr) {
@@ -1124,15 +1131,12 @@ void VarDef::TypeCheck() {
 }
 
 void ConstDef::TypeCheck() { 
-    if (attribute.T.type == Type::VOID) {
-        attribute.T.type = Type::INT;  // 假设常量的声明类型为 int
-    }
     // 检查是否在当前作用域中重复定义
-    if (semant_table.symbol_table.lookup_scope(name) == semant_table.symbol_table.get_current_scope()) {
+    int current_scope = semant_table.symbol_table.get_current_scope();
+    if (semant_table.symbol_table.lookup_scope(name) == current_scope) {
         error_msgs.push_back("Constant '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
-        return; // 如果重复定义，直接返回，不再进行后续检查
+        return;
     }
-
     // 检查数组维度是否合法
     if (dims != nullptr) {
         for (auto d : *dims) {
@@ -1294,9 +1298,7 @@ void CompUnit_Decl::TypeCheck() {
             }
             Symbol var_name = var_def_cast->name;
             // 检查是否在全局作用域中重复声明
-            if (semant_table.GlobalTable.find(var_name) != semant_table.GlobalTable.end()) {
-                error_msgs.push_back("Global variable '" + var_name->get_string() + "' is already declared at line " + std::to_string(line_number) + "\n");
-            } else {
+            if (semant_table.GlobalTable.find(var_name) == semant_table.GlobalTable.end()) {
                 // 将全局变量添加到 GlobalTable 中
                 VarAttribute var_attr;
                 var_attr.type = var_def_cast->attribute.T.type;
@@ -1305,9 +1307,10 @@ void CompUnit_Decl::TypeCheck() {
             }
 
             // 对变量初始化进行类型检查
-            var_def->TypeCheck();
+            //var_def->TypeCheck();
         }
     } else if (auto const_decl = dynamic_cast<ConstDecl*>(decl)) {
+        const_decl->TypeCheck();
         // 如果是常量声明，检查每个常量的重复声明
         for (auto const_def : *(const_decl->var_def_list)) {
             auto const_def_cast = dynamic_cast<ConstDef*>(const_def);
@@ -1318,9 +1321,7 @@ void CompUnit_Decl::TypeCheck() {
             Symbol const_name = const_def_cast->name;
 
             // 检查是否在全局作用域中重复声明
-            if (semant_table.GlobalTable.find(const_name) != semant_table.GlobalTable.end()) {
-                error_msgs.push_back("Global constant '" + const_name->get_string() + "' is already declared at line " + std::to_string(line_number) + "\n");
-            } else {
+            if (semant_table.GlobalTable.find(const_name) == semant_table.GlobalTable.end()) {
                 // 将全局常量添加到 GlobalTable 中
                 VarAttribute const_attr;
                 const_attr.type = const_def_cast->attribute.T.type;
@@ -1329,7 +1330,7 @@ void CompUnit_Decl::TypeCheck() {
             }
 
             // 对常量初始化进行类型检查
-            const_def->TypeCheck();
+            //const_def->TypeCheck();
         }
     } else {
         // 如果 decl 既不是变量声明也不是常量声明，报告错误
