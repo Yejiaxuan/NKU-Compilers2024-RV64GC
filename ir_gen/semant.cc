@@ -785,15 +785,17 @@ void Func_call::TypeCheck() {
     if (funcr_params != nullptr) {
         auto func_r_params = static_cast<FuncRParams*>(funcr_params);
         if (func_r_params->params != nullptr) {
-            params_count = func_r_params->params->size(); // 获取参数数量
+            params_count = func_r_params->params->size(); // 获取实参数量
+            size_t formals_count = func_def->formals->size(); // 获取形参数量
 
-            if (params_count != func_def->formals->size()) {
-                error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() + 
+            if (params_count != formals_count) {
+                error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() +
                                      "' at line " + std::to_string(line_number) + "\n");
             }
 
-            // 遍历实参并进行类型匹配
-            for (size_t i = 0; i < params_count; ++i) {
+            // 遍历实参并进行类型匹配，循环上限为实参和形参数量的较小值
+            size_t min_count = std::min(params_count, formals_count);
+            for (size_t i = 0; i < min_count; ++i) {
                 // 对实参进行类型检查
                 (*func_r_params->params)[i]->TypeCheck(); // 访问实际参数
 
@@ -803,9 +805,9 @@ void Func_call::TypeCheck() {
                 // 检查实参类型与形参类型是否一致
                 if (actual_type.type != expected_type.type) {
                     error_msgs.push_back("Error: Type mismatch for argument " + std::to_string(i) +
-                                         " in function call '" + name->get_string() + "' (expected " + 
-                                         type_to_string(expected_type.type) + ", got " + 
-                                         type_to_string(actual_type.type) + ") at line " + 
+                                         " in function call '" + name->get_string() + "' (expected " +
+                                         type_to_string(expected_type.type) + ", got " +
+                                         type_to_string(actual_type.type) + ") at line " +
                                          std::to_string(line_number) + "\n");
                 }
             }
@@ -815,6 +817,7 @@ void Func_call::TypeCheck() {
     // 设置返回类型为函数定义的返回类型
     attribute.T.type = func_def->attribute.T.type;
 }
+
 
 
 void UnaryExp_plus::TypeCheck() { 
