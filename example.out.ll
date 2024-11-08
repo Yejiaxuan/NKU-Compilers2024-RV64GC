@@ -1,18 +1,10 @@
-Variable 'a' is already defined in the current scope at line 5
+Addition error on void type at line 13
 
-Constant 'c' is already defined in the current scope at line 6
+Error: Function 'multiply' is not defined at line 16
 
-Variable 'b' is already defined in the current scope at line 7
+Division by zero at line 19
 
-Variable 'a' is already defined in the current scope at line 11
+Error: Argument count mismatch in function call 'add' at line 23
 
-Constant 'c' is already defined in the current scope at line 14
-
-Variable 'd' is already defined in the current scope at line 23
-
-Error: Variable 'g' is not defined at line 25
-
-Error: Type mismatch in assignment at line 25
-
-Constant 'h' is already defined in the current scope at line 30
+Error: Type mismatch for argument 1 in function call 'add' (expected int, got float) at line 27
 

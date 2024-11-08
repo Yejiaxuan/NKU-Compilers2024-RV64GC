@@ -1179,17 +1179,17 @@ void ConstDef::TypeCheck() {
 void VarDecl::TypeCheck() { 
     // 遍历变量声明列表中的每个变量定义
     for (auto def : *var_def_list) {
-        auto var_def = dynamic_cast<VarDef*>(def);
+        /*auto var_def = dynamic_cast<VarDef*>(def);
         if (!var_def) {
             error_msgs.push_back("Invalid variable definition at line " + std::to_string(line_number) + "\n");
             continue;
-        }
+        }*/
 
         // 设置变量定义的类型为 VarDecl 声明的类型
-        var_def->attribute.T.type = type_decl;
+        def->attribute.T.type = type_decl;
 
         // 调用 VarDef 的 TypeCheck 方法来检查单个变量定义
-        var_def->TypeCheck();
+        def->TypeCheck();
     }
     //TODO("VarDecl Semant"); 
 }
@@ -1197,17 +1197,17 @@ void VarDecl::TypeCheck() {
 void ConstDecl::TypeCheck() { 
     // 遍历常量声明列表中的每个常量定义
     for (auto def : *var_def_list) {
-        auto const_def = dynamic_cast<ConstDef*>(def);
+        /*auto const_def = dynamic_cast<ConstDef*>(def);
         if (!const_def) {
             error_msgs.push_back("Invalid constant definition at line " + std::to_string(line_number) + "\n");
             continue;
-        }
+        }*/
         
         // 设置常量定义的类型为 ConstDecl 声明的类型
-        const_def->attribute.T.type = type_decl;
+        def->attribute.T.type = type_decl;
         
         // 调用 ConstDef 的 TypeCheck 方法来检查单个常量定义
-        const_def->TypeCheck();
+        def->TypeCheck();
     }
     //TODO("ConstDecl Semant"); 
 }

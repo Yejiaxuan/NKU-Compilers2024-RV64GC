@@ -1,39 +1,30 @@
-int a = 10;              // 全局变量声明
-float b = 20.5;          // 全局浮点变量声明
-const int c = 30;        // 全局常量声明
-
-int a = 15;              // 重复声明全局变量，应报告错误
-const int c = 40;        // 重复声明全局常量，应报告错误
-float b = 25.5;          // 重复声明全局浮点变量，应报告错误
-
-void func1() {
-    int a = 5;           // 局部作用域内声明，允许与全局变量同名
-    int a = 6;           // 重复声明局部变量，应报告错误
-
-    const int c = 50;    // 局部常量与全局常量同名，合法
-    const int c = 60;    // 重复声明局部常量，应报告错误
-
+int add(int a, int b) {
+    return a + b;
 }
 
-void func2() {
-    float b = 30.5;      // 局部浮点变量，允许与全局浮点变量同名
-
-    float d = 40.5;
-
-    float d = 50.5;      // 重复声明局部变量 d，应报告错误
-
-    g = 5.5;             // 未声明变量 g，应报告错误
-}
-
-void func3() {
-    const float h = 1.1; // 局部常量声明
-    const float h = 2.2; // 重复声明局部常量，应报告错误
-
-}
+void doNothing() {}
 
 int main() {
-    float k = 10.5;
+    int a = 10;
+    int b = 0;
+    int c;
+    
+    // 示例1：数值运算表达式中使用 void 返回值的函数
+    c = a + doNothing(); // 期望错误：不能将 void 返回值的函数用于表达式计算
+
+    // 示例2：调用未声明的函数
+    int d = multiply(a, 5); // 期望错误：未声明的函数 multiply
+
+    // 示例3：整数除以零
+    int e = a / (5 - 5); // 期望错误：除以零
+    int f = a / b;       // 期望错误：除以变量 b，b 的值为 0
+
+    // 示例4：函数参数个数不匹配
+    int g = add(a); // 期望错误：参数数量不匹配，应为两个参数
+
+    // 示例5：函数参数类型不匹配
+    float h = 5.0;
+    int i = add(a, h); // 期望错误：类型不匹配，h 为 float 类型，而函数期望 int 类型
 
     return 0;
 }
-
