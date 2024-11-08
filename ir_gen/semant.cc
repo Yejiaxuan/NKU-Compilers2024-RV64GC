@@ -1266,6 +1266,7 @@ void __FuncFParam::TypeCheck() {
 
 void __FuncDef::TypeCheck() {
     semant_table.symbol_table.enter_scope();
+    attribute.T.type = return_type;
     //main函数检查
     if (name->get_string() == "main") {
         MainFlag = true;
