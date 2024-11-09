@@ -8,7 +8,8 @@
     你可以在utils/ast_out.cc的输出函数中找到你需要关注哪些语法树节点中的NodeAttribute类及其他变量
     以及对语义错误的代码输出报错信息
 */
-static bool MainFlag = 0;
+static bool MainFlag = false;
+bool inside_loop = false;
 /*
     错误检查的基本要求:
     • 检查 main 函数是否存在 (根据SysY定义，如果不存在main函数应当报错)；
@@ -700,26 +701,26 @@ void ConstExp::TypeCheck() {
 }
 
 void Lval::TypeCheck() { 
+    VarAttribute val;
     // 检查变量是否在本地作用域中声明
-    int local_scope = semant_table.symbol_table.lookup_scope(name);
-    VarAttribute val; // 用于存储变量的属性
-
-    if (local_scope != -1) {
-        // 变量在本地作用域中
-        scope = local_scope;
-        attribute.V.ConstTag = false; // 本地变量默认可变
-        val = semant_table.symbol_table.lookup_val(name);
+    auto global_entry = semant_table.GlobalTable.find(name);
+    if (global_entry != semant_table.GlobalTable.end()) {
+        // 如果在全局作用域中找到变量，则直接使用全局定义
+        scope = 0; // 设置作用域为全局作用域
+        attribute.V.ConstTag = global_entry->second.ConstTag; // 使用全局常量标记
+        val = global_entry->second; // 从全局表中获取变量属性
     } else {
-        // 检查全局作用域
-        auto global_entry = semant_table.GlobalTable.find(name);
-        if (global_entry != semant_table.GlobalTable.end()) {
-            // 在全局作用域中找到变量
-            scope = 0;
-            attribute.V.ConstTag = global_entry->second.ConstTag;
-            val = global_entry->second; // 从全局表中获取变量属性
+        // 如果全局表中没有该变量，检查本地作用域
+        int local_scope = semant_table.symbol_table.lookup_scope(name);
+        if (local_scope != -1) {
+            // 变量在本地作用域中
+            scope = local_scope;
+            attribute.V.ConstTag = false; // 本地变量默认不可变
+            val = semant_table.symbol_table.lookup_val(name);
         } else {
             // 如果在任何作用域中都未找到，记录错误并返回
             error_msgs.push_back("Error: Variable '" + name->get_string() + "' is not defined at line " + std::to_string(line_number) + "\n");
+            attribute.T.type = Type::UNDEFINED;
             return;
         }
     }
@@ -727,25 +728,26 @@ void Lval::TypeCheck() {
     // 设置类型信息
     attribute.T.type = val.type;
 
-    // 检查是否为常量，常量不能作为左值
+    /*// 检查是否为常量，常量不能作为左值
     if (attribute.V.ConstTag) {
-        error_msgs.push_back("Constant '" + name->get_string() + "' cannot be assigned to at line " + std::to_string(line_number) + "\n");
-    }
+        error_msgs.push_back("Error: Constant '" + name->get_string() + "' cannot be assigned to at line " + std::to_string(line_number) + "\n");
+        return;
+    }*/
 
     // 数组维度检查
     if (dims != nullptr) {
         if (val.dims.size() != dims->size()) {
-            error_msgs.push_back("Array dimension mismatch for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+            error_msgs.push_back("Error: Array dimension mismatch for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
         } else {
             for (auto dim : *dims) {
                 dim->TypeCheck();
                 if (!dim->attribute.V.ConstTag || dim->attribute.T.type != Type::INT) {
-                    error_msgs.push_back("Array index must be a constant integer for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+                    error_msgs.push_back("Error: Array index must be a constant integer for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
                 }
             }
         }
     } else if (!val.dims.empty()) {
-        error_msgs.push_back("Array variable '" + name->get_string() + "' used without index at line " + std::to_string(line_number) + "\n");
+        error_msgs.push_back("Error: Array variable '" + name->get_string() + "' used without index at line " + std::to_string(line_number) + "\n");
     }
     //TODO("Lval Semant"); 
 }
@@ -799,8 +801,7 @@ void Func_call::TypeCheck() {
 
     // 检查实参与形参数量是否匹配
     if (params_count != formals_count) {
-        error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() +
-                             "' at line " + std::to_string(line_number) + "\n");
+        error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
     }
 
     // 检查实参类型与形参类型是否一致
@@ -989,7 +990,7 @@ void block_stmt::TypeCheck() { b->TypeCheck(); }
 void ifelse_stmt::TypeCheck() {
     Cond->TypeCheck();
     if (Cond->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("if cond type is invalid " + std::to_string(line_number) + "\n");
+        error_msgs.push_back("if cond type is invalid " + std::to_string(Cond->GetLineNumber()) + "\n");
     }
     ifstmt->TypeCheck();
     elsestmt->TypeCheck();
@@ -998,18 +999,34 @@ void ifelse_stmt::TypeCheck() {
 void if_stmt::TypeCheck() {
     Cond->TypeCheck();
     if (Cond->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("if cond type is invalid " + std::to_string(line_number) + "\n");
+        error_msgs.push_back("if cond type is invalid " + std::to_string(Cond->GetLineNumber()) + "\n");
     }
     ifstmt->TypeCheck();
 }
 
-void while_stmt::TypeCheck() { //TODO("WhileStmt Semant"); 
+void while_stmt::TypeCheck() {
+    inside_loop = true;
+    Cond->TypeCheck();
+    if (Cond->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("while cond type is invalid " + std::to_string(Cond->GetLineNumber()) + "\n");
+    }
+    body->TypeCheck();
+    inside_loop = false;
+    //TODO("WhileStmt Semant"); 
 }
 
-void continue_stmt::TypeCheck() { //TODO("ContinueStmt Semant"); 
+void continue_stmt::TypeCheck() {
+    if (!inside_loop) {
+        error_msgs.push_back("continue语句不在循环内 " + std::to_string(line_number) + "\n");
+    } 
+    //TODO("ContinueStmt Semant"); 
 }
 
-void break_stmt::TypeCheck() { //TODO("BreakStmt Semant"); 
+void break_stmt::TypeCheck() { 
+    if (!inside_loop) {
+        error_msgs.push_back("break语句不在循环内 " + std::to_string(line_number) + "\n");
+    }
+    //TODO("BreakStmt Semant"); 
 }
 
 void return_stmt::TypeCheck() { 
@@ -1041,7 +1058,7 @@ void ConstInitVal_exp::TypeCheck() {
     exp->TypeCheck();
     attribute = exp->attribute;
     // 检查表达式是否为常量
-    if (!exp->attribute.V.ConstTag) {
+    if (exp->attribute.V.ConstTag == false) {
         error_msgs.push_back("Initializer expression must be a constant in ConstInitVal_exp at line " + std::to_string(line_number) + "\n");
     }
     //TODO("ConstInitValExp Semant"); 
@@ -1130,7 +1147,7 @@ void VarDef::TypeCheck() {
     if (init != nullptr) {
         init->TypeCheck();
 
-        if (init->attribute.T.type != attribute.T.type) {
+        if (init->attribute.T.type != attribute.T.type && init->attribute.T.type != Type::VOID) {
             error_msgs.push_back("Type mismatch in initializer for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
         }
     }

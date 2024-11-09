@@ -8,7 +8,7 @@
 class Type {
 public:
     // 我们认为数组的类型为PTR
-    enum ty { VOID = 0, INT = 1, FLOAT = 2, BOOL = 3, PTR = 4, DOUBLE = 5 } type;
+    enum ty { VOID = 0, INT = 1, FLOAT = 2, BOOL = 3, PTR = 4, DOUBLE = 5, UNDEFINED = 6} type;
     std::string GetTypeInfo();
     Type() { type = VOID; }
 };
