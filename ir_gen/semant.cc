@@ -776,51 +776,56 @@ void Func_call::TypeCheck() {
     // 获取函数的定义
     auto it = semant_table.FunctionTable.find(name);
     if (it == semant_table.FunctionTable.end()) {
-        error_msgs.push_back("Error: Function '" + name->get_string() + "' is not defined at line " +
-                             std::to_string(line_number) + "\n");
+        error_msgs.push_back("Error: Function '" + name->get_string() +
+                             "' is not defined at line " + std::to_string(line_number) + "\n");
         attribute.T.type = Type::INT; // 假设返回类型为 int，继续分析
         return;
     }
 
     auto func_def = it->second; // 获取函数定义
 
-    // 检查实参数量是否匹配
+    // 获取形参数量
+    size_t formals_count = func_def->formals->size();
+
+    // 获取实参数量
     size_t params_count = 0;
+    FuncRParams* func_r_params = nullptr;
     if (funcr_params != nullptr) {
-        auto func_r_params = static_cast<FuncRParams*>(funcr_params);
+        func_r_params = static_cast<FuncRParams*>(funcr_params);
         if (func_r_params->params != nullptr) {
-            params_count = func_r_params->params->size(); // 获取实参数量
-            size_t formals_count = func_def->formals->size(); // 获取形参数量
+            params_count = func_r_params->params->size();
+        }
+    }
 
-            if (params_count != formals_count) {
-                error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() +
-                                     "' at line " + std::to_string(line_number) + "\n");
-            }
+    // 检查实参与形参数量是否匹配
+    if (params_count != formals_count) {
+        error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() +
+                             "' at line " + std::to_string(line_number) + "\n");
+    }
 
-            // 遍历实参并进行类型匹配，循环上限为实参和形参数量的较小值
-            size_t min_count = std::min(params_count, formals_count);
-            for (size_t i = 0; i < min_count; ++i) {
-                // 对实参进行类型检查
-                (*func_r_params->params)[i]->TypeCheck(); // 访问实际参数
+    // 检查实参类型与形参类型是否一致
+    size_t min_count = std::min(params_count, formals_count);
+    for (size_t i = 0; i < min_count; ++i) {
+        // 对实参进行类型检查
+        (*func_r_params->params)[i]->TypeCheck(); // 访问实际参数
 
-                auto expected_type = func_def->formals->at(i)->type_decl; // 获取形参的完整 Type 对象
-                auto actual_type = (*func_r_params->params)[i]->attribute.T;
+        auto expected_type = func_def->formals->at(i)->type_decl; // 获取形参的类型
+        auto actual_type = (*func_r_params->params)[i]->attribute.T;
 
-                // 检查实参类型与形参类型是否一致
-                if (actual_type.type != expected_type) {
-                    error_msgs.push_back("Error: Type mismatch for argument " + std::to_string(i) +
-                                         " in function call '" + name->get_string() + "' (expected " +
-                                         type_to_string(expected_type) + ", got " +
-                                         type_to_string(actual_type.type) + ") at line " +
-                                         std::to_string(line_number) + "\n");
-                }
-            }
+        // 检查实参类型是否与形参类型一致
+        if (actual_type.type != expected_type) {
+            error_msgs.push_back("Error: Type mismatch for argument " + std::to_string(i + 1) +
+                                 " in function call '" + name->get_string() + "' (expected " +
+                                 type_to_string(expected_type) + ", got " +
+                                 type_to_string(actual_type.type) + ") at line " +
+                                 std::to_string(line_number) + "\n");
         }
     }
 
     // 设置返回类型为函数定义的返回类型
     attribute.T.type = func_def->return_type;
 }
+
 
 
 
