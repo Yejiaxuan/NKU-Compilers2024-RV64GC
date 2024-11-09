@@ -803,14 +803,14 @@ void Func_call::TypeCheck() {
                 // 对实参进行类型检查
                 (*func_r_params->params)[i]->TypeCheck(); // 访问实际参数
 
-                auto expected_type = func_def->formals->at(i)->attribute.T; // 获取形参的完整 Type 对象
+                auto expected_type = func_def->formals->at(i)->type_decl; // 获取形参的完整 Type 对象
                 auto actual_type = (*func_r_params->params)[i]->attribute.T;
 
                 // 检查实参类型与形参类型是否一致
-                if (actual_type.type != expected_type.type) {
+                if (actual_type.type != expected_type) {
                     error_msgs.push_back("Error: Type mismatch for argument " + std::to_string(i) +
                                          " in function call '" + name->get_string() + "' (expected " +
-                                         type_to_string(expected_type.type) + ", got " +
+                                         type_to_string(expected_type) + ", got " +
                                          type_to_string(actual_type.type) + ") at line " +
                                          std::to_string(line_number) + "\n");
                 }
