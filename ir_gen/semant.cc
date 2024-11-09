@@ -161,6 +161,7 @@ void MulExp_div::TypeCheck() {
         if ((unary_exp->attribute.T.type == Type::INT && unary_exp->attribute.V.val.IntVal == 0) ||
             (unary_exp->attribute.T.type == Type::FLOAT && unary_exp->attribute.V.val.FloatVal == 0.0f)) {
             error_msgs.push_back("Division by zero at line " + std::to_string(line_number) + "\n");
+            return;
         }
     }
 
@@ -186,9 +187,11 @@ void MulExp_mod::TypeCheck() {
     if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
         error_msgs.push_back("Modulo error on void type at line " + std::to_string(line_number) + "\n");
         attribute.T.type = Type::INT;
+        return;
     } else if (mulexp->attribute.T.type == Type::FLOAT || unary_exp->attribute.T.type == Type::FLOAT) {
         error_msgs.push_back("Modulo error on float type at line " + std::to_string(line_number) + "\n");
         attribute.T.type = Type::INT;
+        return;
     } else {
         attribute.T.type = Type::INT;
     }
@@ -196,6 +199,7 @@ void MulExp_mod::TypeCheck() {
     // 检查除以0的情况（模运算除数为0）
     if (unary_exp->attribute.V.ConstTag && unary_exp->attribute.V.val.IntVal == 0) {
         error_msgs.push_back("Modulo by zero at line " + std::to_string(line_number) + "\n");
+        return;
     }
 
     // 常量折叠
@@ -815,7 +819,7 @@ void Func_call::TypeCheck() {
     }
 
     // 设置返回类型为函数定义的返回类型
-    attribute.T.type = func_def->attribute.T.type;
+    attribute.T.type = func_def->return_type;
 }
 
 
