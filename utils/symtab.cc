@@ -74,3 +74,4 @@ void SymbolRegTable::exit_scope() {
     --current_scope;
     symbol_table.pop_back();
 }
+

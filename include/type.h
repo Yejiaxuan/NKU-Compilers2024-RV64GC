@@ -40,6 +40,9 @@ public:
     std::vector<float> FloatInitVals{};
 
     // TODO():也许你需要添加更多变量
+    int IntConstValue = 0;      // 新增字段，用于存储整数常量值
+    float FloatConstValue = 0.0; // 新增字段，用于存储浮点常量值
+    
     VarAttribute() {
         type = Type::VOID;
         ConstTag = false;

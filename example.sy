@@ -1,6 +1,4 @@
-int main()
-{
-    putint(3);
-    int x = putint(5);
-    return x;
+int b(){
+int a=5;
+return a+!a;
 }

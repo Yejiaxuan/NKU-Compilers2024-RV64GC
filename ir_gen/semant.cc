@@ -727,7 +727,7 @@ void Lval::TypeCheck() {
 
     // 设置类型信息
     attribute.T.type = val.type;
-
+    attribute.V.ConstTag = val.ConstTag;
     /*// 检查是否为常量，常量不能作为左值
     if (attribute.V.ConstTag) {
         error_msgs.push_back("Error: Constant '" + name->get_string() + "' cannot be assigned to at line " + std::to_string(line_number) + "\n");
@@ -1197,6 +1197,12 @@ void ConstDef::TypeCheck() {
         } else if (init->attribute.T.type != const_attr.type) {
             // 只有在初始化值存在且类型不匹配时，才输出类型不匹配的错误
             error_msgs.push_back("Type mismatch in initializer for constant '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+        } else {
+            if(init->attribute.T.type == Type::INT) {
+                const_attr.IntInitVals.push_back(init->attribute.V.val.IntVal);
+            } else if(init->attribute.T.type == Type::FLOAT) {
+                const_attr.FloatInitVals.push_back(init->attribute.V.val.FloatVal);
+            }
         }
     }
 
@@ -1326,7 +1332,7 @@ void CompUnit_Decl::TypeCheck() {
     if (auto var_decl = dynamic_cast<VarDecl*>(decl)) {
         var_decl->TypeCheck();
         // 如果是变量声明，检查每个变量的重复声明
-        for (auto var_def : *(var_decl->var_def_list)) {
+        for (auto &var_def : *(var_decl->var_def_list)) {
             auto var_def_cast = dynamic_cast<VarDef*>(var_def);
             if (!var_def_cast) {
                 error_msgs.push_back("Invalid variable definition at line " + std::to_string(line_number) + "\n");
@@ -1376,3 +1382,4 @@ void CompUnit_Decl::TypeCheck() {
 }
 
 void CompUnit_FuncDef::TypeCheck() { func_def->TypeCheck(); }
+

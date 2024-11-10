@@ -405,6 +405,7 @@ typedef __Decl *Decl;
 
 class __InitVal : public tree_node {
 public:
+    virtual Expression GetExp() = 0;
 };
 typedef __InitVal *InitVal;
 
@@ -417,6 +418,7 @@ public:
     void codeIR();
     void TypeCheck();
     void printAST(std::ostream &s, int pad);
+    Expression GetExp() { return NULL; }
 };
 
 class ConstInitVal_exp : public __InitVal {
@@ -426,6 +428,7 @@ public:
     void codeIR();
     void TypeCheck();
     void printAST(std::ostream &s, int pad);
+    Expression GetExp() { return exp; }
 };
 
 // InitVal -> {InitVal,InitVal,InitVal,...}
@@ -436,6 +439,7 @@ public:
     void codeIR();
     void TypeCheck();
     void printAST(std::ostream &s, int pad);
+    Expression GetExp() { return NULL; }
 };
 
 class VarInitVal_exp : public __InitVal {
@@ -445,6 +449,7 @@ public:
     void codeIR();
     void TypeCheck();
     void printAST(std::ostream &s, int pad);
+    Expression GetExp() { return exp; }
 };
 
 class __Def : public tree_node {
