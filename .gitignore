@@ -6,3 +6,6 @@ test_output/functional_testIR/*
 ztemp/*
 submit
 submit/*
+example.out
+example.out.ll
+example.sy
