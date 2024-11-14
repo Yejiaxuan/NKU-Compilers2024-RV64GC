@@ -317,13 +317,9 @@ void return_stmt_void::codeIR() {
 }
 
 void ConstInitVal::codeIR() {
-    if (IsExp()) {
-        exp->codeIR();
-    } else {
-        for (auto initializer : *GetList()) {
-            initializer->codeIR();
-        }
-    }
+    for (auto initializer : *GetList()) {
+         initializer->codeIR();
+     }
     // TODO("ConstInitVal CodeIR");
 }
 
@@ -333,13 +329,9 @@ void ConstInitVal_exp::codeIR() {
 }
 
 void VarInitVal::codeIR() {
-    if (IsExp()) {
-        exp->codeIR();
-    } else {
-        for (auto initializer : *GetList()) {
-            initializer->codeIR();
-        }
-    }
+    for (auto initializer : *GetList()) {
+         initializer->codeIR();
+     }
     // TODO("VarInitVal CodeIR");
 }
 
