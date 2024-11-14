@@ -4,6 +4,8 @@
 
 extern SemantTable semant_table;    // 也许你会需要一些语义分析的信息
 
+std::map<int, VarAttribute> RegTable;
+
 IRgenTable irgen_table;    // 中间代码生成的辅助变量
 LLVMIR llvmIR;             // 我们需要在这个变量中生成中间代码
 
@@ -63,7 +65,35 @@ RegOperand *GetNewRegOperand(int RegNo);
 // eg. you can use fptosi instruction to converse float to int
 // eg. you can use zext instruction to converse bool to int
 void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int src, int dst) {
-    TODO("IRgenTypeConverse. Implement it if you need it");
+    if (type_src == Type::FLOAT && type_dst == Type::INT) {
+        IRgenFptosi(B, src, dst);
+    } else if (type_src == Type::INT && type_dst == Type::FLOAT) {
+        IRgenSitofp(B, src, dst);
+    } else if (type_src == Type::BOOL && type_dst == Type::INT) {
+        IRgenZextI1toI32(B, src, dst);
+    } else if (type_src == Type::INT && type_dst == Type::BOOL) {
+        // INT to BOOL conversion (non-zero to true, zero to false)
+        IRgenIcmpImmRight(B, BasicInstruction::IcmpCond::NE, src, 0, dst);
+    } else if (type_src == Type::FLOAT && type_dst == Type::BOOL) {
+        // FLOAT to BOOL conversion (non-zero to true, zero to false)
+        IRgenFcmpImmRight(B, BasicInstruction::FcmpCond::ONE, src, 0.0f, dst);
+    } else if (type_src == Type::BOOL && type_dst == Type::FLOAT) {
+        // BOOL to FLOAT conversion (true to 1.0, false to 0.0)
+        IRgenSitofp(B, src, dst);
+    } else if (type_src == Type::INT && type_dst == Type::INT) {
+        // INT to INT conversion (no-op)
+        if (src != dst) {
+            IRgenArithmeticI32(B, BasicInstruction::LLVMIROpcode::ADD, src, 0, dst);
+        }
+    } else if (type_src == Type::FLOAT && type_dst == Type::FLOAT) {
+        // FLOAT to FLOAT conversion (no-op)
+        if (src != dst) {
+            IRgenArithmeticF32(B, BasicInstruction::LLVMIROpcode::FADD, src, 0.0f, dst);
+        }
+    } else {
+        // 其他类型转换（待添加...）
+    }
+    // TODO("IRgenTypeConverse. Implement it if you need it");
 }
 
 void BasicBlock::InsertInstruction(int pos, Instruction Ins) {
@@ -121,105 +151,331 @@ void __Program::codeIR() {
 
 void Exp::codeIR() { addexp->codeIR(); }
 
-void AddExp_plus::codeIR() { TODO("BinaryExp CodeIR"); }
+void AddExp_plus::codeIR() {
 
-void AddExp_sub::codeIR() { TODO("BinaryExp CodeIR"); }
+    // TODO("BinaryExp CodeIR");
+}
 
-void MulExp_mul::codeIR() { TODO("BinaryExp CodeIR"); }
+void AddExp_sub::codeIR() {
 
-void MulExp_div::codeIR() { TODO("BinaryExp CodeIR"); }
+    // TODO("BinaryExp CodeIR");
+}
 
-void MulExp_mod::codeIR() { TODO("BinaryExp CodeIR"); }
+void MulExp_mul::codeIR() {
 
-void RelExp_leq::codeIR() { TODO("BinaryExp CodeIR"); }
+    // TODO("BinaryExp CodeIR");
+}
 
-void RelExp_lt::codeIR() { TODO("BinaryExp CodeIR"); }
+void MulExp_div::codeIR() {
 
-void RelExp_geq::codeIR() { TODO("BinaryExp CodeIR"); }
+    // TODO("BinaryExp CodeIR");
+}
 
-void RelExp_gt::codeIR() { TODO("BinaryExp CodeIR"); }
+void MulExp_mod::codeIR() {
 
-void EqExp_eq::codeIR() { TODO("BinaryExp CodeIR"); }
+    // TODO("BinaryExp CodeIR");
+}
 
-void EqExp_neq::codeIR() { TODO("BinaryExp CodeIR"); }
+void RelExp_leq::codeIR() {
+
+    // TODO("BinaryExp CodeIR");
+}
+
+void RelExp_lt::codeIR() {
+
+    // TODO("BinaryExp CodeIR");
+}
+
+void RelExp_geq::codeIR() {
+
+    // TODO("BinaryExp CodeIR");
+}
+
+void RelExp_gt::codeIR() {
+
+    // TODO("BinaryExp CodeIR");
+}
+
+void EqExp_eq::codeIR() {
+
+    // TODO("BinaryExp CodeIR");
+}
+
+void EqExp_neq::codeIR() {
+
+    // TODO("BinaryExp CodeIR");
+}
 
 // short circuit &&
-void LAndExp_and::codeIR() { TODO("LAndExpAnd CodeIR"); }
+void LAndExp_and::codeIR() {
+
+    // TODO("LAndExpAnd CodeIR");
+}
 
 // short circuit ||
-void LOrExp_or::codeIR() { TODO("LOrExpOr CodeIR"); }
+void LOrExp_or::codeIR() {
+
+    // TODO("LOrExpOr CodeIR");
+}
 
 void ConstExp::codeIR() { addexp->codeIR(); }
 
-void Lval::codeIR() { TODO("Lval CodeIR"); }
+void Lval::codeIR() {
 
-void FuncRParams::codeIR() { TODO("FuncRParams CodeIR"); }
+    // TODO("Lval CodeIR");
+}
 
-void Func_call::codeIR() { TODO("FunctionCall CodeIR"); }
+void FuncRParams::codeIR() {
 
-void UnaryExp_plus::codeIR() { TODO("UnaryExpPlus CodeIR"); }
+    // TODO("FuncRParams CodeIR");
+}
 
-void UnaryExp_neg::codeIR() { TODO("UnaryExpNeg CodeIR"); }
+void Func_call::codeIR() {
 
-void UnaryExp_not::codeIR() { TODO("UnaryExpNot CodeIR"); }
+    // TODO("FunctionCall CodeIR");
+}
 
-void IntConst::codeIR() { TODO("IntConst CodeIR"); }
+void UnaryExp_plus::codeIR() {
 
-void FloatConst::codeIR() { TODO("FloatConst CodeIR"); }
+    // TODO("UnaryExpPlus CodeIR");
+}
 
-void StringConst::codeIR() { TODO("StringConst CodeIR"); }
+void UnaryExp_neg::codeIR() {
+
+    // TODO("UnaryExpNeg CodeIR");
+}
+
+void UnaryExp_not::codeIR() {
+    
+    // TODO("UnaryExpNot CodeIR");
+}
+
+void IntConst::codeIR() {
+    LLVMBlock B = llvmIR.GetCurrentBlock();
+    int result_reg = ++irgen_table.irgen_table.max_reg;
+    IRgenArithmeticI32ImmAll(B, BasicInstruction::LLVMIROpcode::ADD, val, 0, result_reg);
+    // TODO("IntConst CodeIR");
+}
+
+void FloatConst::codeIR() {
+
+    // TODO("FloatConst CodeIR");
+}
+
+void StringConst::codeIR() {
+
+    // TODO("StringConst CodeIR");
+}
 
 void PrimaryExp_branch::codeIR() { exp->codeIR(); }
 
-void assign_stmt::codeIR() { TODO("AssignStmt CodeIR"); }
+void assign_stmt::codeIR() {
+
+    // TODO("AssignStmt CodeIR");
+}
 
 void expr_stmt::codeIR() { exp->codeIR(); }
 
-void block_stmt::codeIR() { TODO("BlockStmt CodeIR"); }
+void block_stmt::codeIR() {
 
-void ifelse_stmt::codeIR() { TODO("IfElseStmt CodeIR"); }
+    // TODO("BlockStmt CodeIR");
+}
 
-void if_stmt::codeIR() { TODO("IfStmt CodeIR"); }
+void ifelse_stmt::codeIR() {
 
-void while_stmt::codeIR() { TODO("WhileStmt CodeIR"); }
+    // TODO("IfElseStmt CodeIR");
+}
 
-void continue_stmt::codeIR() { TODO("ContinueStmt CodeIR"); }
+void if_stmt::codeIR() {
 
-void break_stmt::codeIR() { TODO("BreakStmt CodeIR"); }
+    // TODO("IfStmt CodeIR");
+}
 
-void return_stmt::codeIR() { TODO("ReturnStmt CodeIR"); }
+void while_stmt::codeIR() {
 
-void return_stmt_void::codeIR() { TODO("ReturnStmtVoid CodeIR"); }
+    // TODO("WhileStmt CodeIR");
+}
 
-void ConstInitVal::codeIR() { TODO("ConstInitVal CodeIR"); }
+void continue_stmt::codeIR() {
 
-void ConstInitVal_exp::codeIR() { TODO("ConstInitValWithExp CodeIR"); }
+    // TODO("ContinueStmt CodeIR");
+}
 
-void VarInitVal::codeIR() { TODO("VarInitVal CodeIR"); }
+void break_stmt::codeIR() {
 
-void VarInitVal_exp::codeIR() { TODO("VarInitValWithExp CodeIR"); }
+    // TODO("BreakStmt CodeIR");
+}
 
-void VarDef_no_init::codeIR() { TODO("VarDefNoInit CodeIR"); }
+void return_stmt::codeIR() {
 
-void VarDef::codeIR() { TODO("VarDef CodeIR"); }
+    // TODO("ReturnStmt CodeIR");
+}
 
-void ConstDef::codeIR() { TODO("ConstDef CodeIR"); }
+void return_stmt_void::codeIR() {
 
-void VarDecl::codeIR() { TODO("VarDecl CodeIR"); }
+    // TODO("ReturnStmtVoid CodeIR");
+}
 
-void ConstDecl::codeIR() { TODO("ConstDecl CodeIR"); }
+void ConstInitVal::codeIR() {
+    if (IsExp()) {
+        exp->codeIR();
+    } else {
+        for (auto initializer : *GetList()) {
+            initializer->codeIR();
+        }
+    }
+    // TODO("ConstInitVal CodeIR");
+}
 
-void BlockItem_Decl::codeIR() { TODO("BlockItemDecl CodeIR"); }
+void ConstInitVal_exp::codeIR() {
+    exp->codeIR();
+    // TODO("ConstInitValWithExp CodeIR");
+}
 
-void BlockItem_Stmt::codeIR() { TODO("BlockItemStmt CodeIR"); }
+void VarInitVal::codeIR() {
+    if (IsExp()) {
+        exp->codeIR();
+    } else {
+        for (auto initializer : *GetList()) {
+            initializer->codeIR();
+        }
+    }
+    // TODO("VarInitVal CodeIR");
+}
 
-void __Block::codeIR() { TODO("Block CodeIR"); }
+void VarInitVal_exp::codeIR() {
+    exp->codeIR();
+    // TODO("VarInitValWithExp CodeIR");
+}
 
-void __FuncFParam::codeIR() { TODO("FunctionFParam CodeIR"); }
+void VarDef_no_init::codeIR() {
+    irgen_table.symbol_table.add_Symbol(GetName(), ++irgen_table.max_reg);
+    int allocation_register = irgen_table.max_reg;
+    VarAttribute attribute;
+    attribute.type = type_decl;
 
-void __FuncDef::codeIR() { TODO("FunctionDef CodeIR"); }
+    if (GetDims() == nullptr) {
+        IRgenAlloca(B, Type2LLvm[type_decl], allocation_register);
+        RegTable[allocation_register] = attribute;
 
-void CompUnit_Decl::codeIR() { TODO("CompUnitDecl CodeIR"); }
+        Operand value_operand;
+        if (type_decl == Type::INT) {
+            IRgenArithmeticI32ImmAll(InitB, LLVMIROpcode::ADD, 0, 0, ++irgen_table.max_reg);
+            value_operand = GetNewRegOperand(irgen_table.max_reg);
+        } else if (type_decl == Type::FLOAT) {
+            // TODO: 处理浮点数的默认初始化（后续实现）
+        }
+        IRgenStore(InitB, Type2LLvm[type_decl], value_operand, GetNewRegOperand(allocation_register));
+    } else {
+        // TODO: 处理数组的内存分配（后续实现）
+    }
+    // TODO("VarDefNoInit CodeIR");
+}
+
+void VarDef::codeIR() {
+    irgen_table.symbol_table.add_Symbol(GetName(), ++irgen_table.max_reg);
+    int allocation_register = irgen_table.max_reg;
+    VarAttribute attribute;
+    attribute.type = type_decl;
+
+    if (GetDims() == nullptr) {
+        IRgenAlloca(B, Type2LLvm[type_decl], allocation_register);
+        RegTable[allocation_register] = attribute;
+
+        VarInitVal *initializer = GetInit();
+        if (initializer != nullptr) {
+            initializer->codeIR();
+            IRgenTypeConverse(InitB, initializer->attribute.T.type, type_decl, irgen_table.max_reg);
+            Operand value_operand = GetNewRegOperand(irgen_table.max_reg);
+            IRgenStore(InitB, Type2LLvm[type_decl], value_operand, GetNewRegOperand(allocation_register));
+        } else {
+            Operand value_operand;
+            if (type_decl == Type::INT) {
+                IRgenArithmeticI32ImmAll(InitB, LLVMIROpcode::ADD, 0, 0, ++irgen_table.max_reg);
+                value_operand = GetNewRegOperand(irgen_table.max_reg);
+            } else if (type_decl == Type::FLOAT) {
+                // TODO: 处理浮点数的默认初始化（后续实现）
+            }
+            IRgenStore(InitB, Type2LLvm[type_decl], value_operand, GetNewRegOperand(allocation_register));
+        }
+    } else {
+        // TODO: 处理数组的内存分配和初始化（后续实现）
+    }
+    // TODO("VarDef CodeIR");
+}
+
+void ConstDef::codeIR() {
+    irgen_table.symbol_table.add_Symbol(GetName(), ++irgen_table.max_reg);
+    int allocation_register = irgen_table.max_reg;
+    VarAttribute attribute;
+    attribute.type = type_decl;
+
+    if (GetDims() == nullptr) {
+        IRgenAlloca(B, Type2LLvm[type_decl], allocation_register);
+        RegTable[allocation_register] = attribute;
+
+        ConstInitVal *initializer = GetInit();
+        assert(initializer != nullptr);
+
+        initializer->codeIR();
+        IRgenTypeConverse(InitB, initializer->attribute.T.type, type_decl, irgen_table.max_reg);
+        Operand value_operand = GetNewRegOperand(irgen_table.max_reg);
+        IRgenStore(InitB, Type2LLvm[type_decl], value_operand, GetNewRegOperand(allocation_register));
+    } else {
+        // TODO: 处理数组的内存分配和初始化（后续实现）
+    }
+    // TODO("ConstDef CodeIR");
+}
+
+void VarDecl::codeIR() {
+    LLVMBlock block = llvmIR.GetBlock(function_now, 0);
+    LLVMBlock init_block = llvmIR.GetBlock(function_now, now_label);
+
+    for (auto definition : *var_def_list) {
+        definition->codeIR();
+    }
+    // TODO("VarDecl CodeIR");
+}
+
+void ConstDecl::codeIR() {
+    LLVMBlock block = llvmIR.GetBlock(function_now, 0);
+    LLVMBlock init_block = llvmIR.GetBlock(function_now, now_label);
+
+    for (auto definition : *var_def_list) {
+        definition->codeIR();
+    }
+    // TODO("ConstDecl CodeIR");
+}
+
+void BlockItem_Decl::codeIR() {
+
+    // TODO("BlockItemDecl CodeIR");
+}
+
+void BlockItem_Stmt::codeIR() {
+
+    // TODO("BlockItemStmt CodeIR");
+}
+
+void __Block::codeIR() {
+
+    // TODO("Block CodeIR");
+}
+
+void __FuncFParam::codeIR() {
+
+    // TODO("FunctionFParam CodeIR");
+}
+
+void __FuncDef::codeIR() {
+
+    // TODO("FunctionDef CodeIR");
+}
+
+void CompUnit_Decl::codeIR() {
+
+    // TODO("CompUnitDecl CodeIR");
+}
 
 void CompUnit_FuncDef::codeIR() { func_def->codeIR(); }
 
