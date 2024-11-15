@@ -18,7 +18,7 @@ public:
     // TODO():添加更多你需要的成员变量和成员函数
     int register_counter = -1;
     SymbolRegTable symbol_table;
-
+    Operand string_operand = nullptr;
     int loop_start_label = -1;
     int loop_end_label = -1;
     Type::ty function_returntype = Type::VOID;

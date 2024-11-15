@@ -10,11 +10,9 @@ static FuncDefInstruction this_function;
 static int function_label = 0;
 Type::ty current_type_decl;
 
-
 Operand current_strptr = nullptr;
 std::map<Symbol, int> GlobalTable;
 std::map<int, int> FormalArrayTable;
-
 
 std::map<int, VarAttribute> RegTable;
 void AddLibFunctionDeclare();
@@ -209,6 +207,23 @@ void GenerateBinaryOperation(tree_node* left, tree_node* right, NodeAttribute::o
         {NodeAttribute::DIV, BasicInstruction::FDIV}
     };
 
+    std::map<NodeAttribute::opcode, BasicInstruction::IcmpCond> int_cmp_ops = {
+        {NodeAttribute::LEQ, BasicInstruction::sle},
+        {NodeAttribute::LT, BasicInstruction::slt},
+        {NodeAttribute::GEQ, BasicInstruction::sge},
+        {NodeAttribute::GT, BasicInstruction::sgt},
+        {NodeAttribute::EQ, BasicInstruction::eq},
+        {NodeAttribute::NEQ, BasicInstruction::ne}
+    };
+
+    std::map<NodeAttribute::opcode, BasicInstruction::FcmpCond> float_cmp_ops = {
+        {NodeAttribute::LEQ, BasicInstruction::OLE},
+        {NodeAttribute::LT, BasicInstruction::OLT},
+        {NodeAttribute::GEQ, BasicInstruction::OGE},
+        {NodeAttribute::GT, BasicInstruction::OGT},
+        {NodeAttribute::EQ, BasicInstruction::OEQ},
+        {NodeAttribute::NEQ, BasicInstruction::ONE}
+    };
     // 检查并处理类型转换
     if (type1 == Type::INT && type2 == Type::BOOL){
         IRgenZextI1toI32(B, reg2, ++irgen_table.register_counter);
@@ -239,11 +254,23 @@ void GenerateBinaryOperation(tree_node* left, tree_node* right, NodeAttribute::o
         reg1 = irgen_table.register_counter;
     } 
 
-    // 根据类型和操作符选择相应的指令生成
-    if (type1 == Type::INT && type2 == Type::INT) {
-        IRgenArithmeticI32(B, int_ops[op], reg1, reg2, ++irgen_table.register_counter);
-    } else if (type1 == Type::FLOAT || type2 == Type::FLOAT) {
-        IRgenArithmeticF32(B, float_ops[op], reg1, reg2, ++irgen_table.register_counter);
+    // 判断操作符是否为关系运算
+    if (int_cmp_ops.find(op) != int_cmp_ops.end()) {
+        if (type1 == Type::INT && type2 == Type::INT) {
+            IRgenIcmp(B, int_cmp_ops.at(op), reg1, reg2, ++irgen_table.register_counter);
+        } else if (type1 == Type::FLOAT && type2 == Type::FLOAT) {
+            IRgenFcmp(B, float_cmp_ops.at(op), reg1, reg2, ++irgen_table.register_counter);
+        } else {
+            assert(false && "Unsupported type combination for relational operation");
+        }
+    } else if (type1 == Type::INT && type2 == Type::INT) {
+        // 算术运算（整数）
+        IRgenArithmeticI32(B, int_ops.at(op), reg1, reg2, ++irgen_table.register_counter);
+    } else if (type1 == Type::FLOAT && type2 == Type::FLOAT) {
+        // 算术运算（浮点数）
+        IRgenArithmeticF32(B, float_ops.at(op), reg1, reg2, ++irgen_table.register_counter);
+    } else {
+        assert(false && "Unsupported operation");
     }
 }
 
@@ -351,13 +378,65 @@ void EqExp_neq::codeIR() {
 
 // short circuit &&
 void LAndExp_and::codeIR() {
+    // 获取当前函数的基本块
+    LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
 
+    // 创建新标签
+    int true_label = llvmIR.NewBlock(this_function, ++function_label)->block_id;
+    int end_label = llvmIR.NewBlock(this_function, ++function_label)->block_id;
+
+    // 生成左操作数的代码
+    landexp->codeIR();
+    IRgenTypeConverse(current_block, landexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+
+    // 如果左操作数为 false，跳转到结束块（短路逻辑）
+    IRgenBrCond(current_block, irgen_table.register_counter, true_label, end_label);
+
+    // 处理 true_label，生成右操作数的代码
+    function_label = true_label;
+    LLVMBlock true_block = llvmIR.GetBlock(this_function, true_label);
+    eqexp->codeIR();
+    IRgenTypeConverse(true_block, eqexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+
+    // 跳转到结束块
+    IRgenBRUnCond(true_block, end_label);
+
+    // 处理结束块，将最终结果保存在 attribute.result_reg
+    function_label = end_label;
+    LLVMBlock end_block = llvmIR.GetBlock(this_function, end_label);
+    attribute.result_reg = irgen_table.register_counter;
     // TODO("LAndExpAnd CodeIR");
 }
 
 // short circuit ||
 void LOrExp_or::codeIR() {
+    // 获取当前函数的基本块
+    LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
 
+    // 创建新标签
+    int false_label = llvmIR.NewBlock(this_function, ++function_label)->block_id;
+    int end_label = llvmIR.NewBlock(this_function, ++function_label)->block_id;
+
+    // 生成左操作数的代码
+    lorexp->codeIR();
+    IRgenTypeConverse(current_block, lorexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+
+    // 如果左操作数为 true，跳转到结束块（短路逻辑）
+    IRgenBrCond(current_block, irgen_table.register_counter, end_label, false_label);
+
+    // 处理 false_label，生成右操作数的代码
+    function_label = false_label;
+    LLVMBlock false_block = llvmIR.GetBlock(this_function, false_label);
+    landexp->codeIR();
+    IRgenTypeConverse(false_block, landexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+
+    // 跳转到结束块
+    IRgenBRUnCond(false_block, end_label);
+
+    // 处理结束块，将最终结果保存在 attribute.result_reg
+    function_label = end_label;
+    LLVMBlock end_block = llvmIR.GetBlock(this_function, end_label);
+    attribute.result_reg = irgen_table.register_counter;
     // TODO("LOrExpOr CodeIR");
 }
 
@@ -405,7 +484,75 @@ void FuncRParams::codeIR() {
 }
 
 void Func_call::codeIR() {
+    LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
 
+    // 检查是否调用的是 `putf` 函数
+    if (name->get_string() == "putf") {
+        auto params = ((FuncRParams *)funcr_params)->params;
+        std::vector<std::pair<BasicInstruction::LLVMType, Operand>> args;
+
+        // 第一个参数是字符串指针
+        auto str_param = (*params)[0];
+        str_param->codeIR();
+        args.emplace_back(BasicInstruction::PTR, irgen_table.string_operand);
+
+        // 从第二个参数开始处理数值类型的参数
+        for (size_t i = 1; i < params->size(); ++i) {
+            auto param = (*params)[i];
+            param->codeIR();
+
+            Type::ty param_type = param->attribute.T.type;
+            if (param_type == Type::FLOAT) {
+                // `putf` 需要 DOUBLE 类型的参数，将 FLOAT 转换为 DOUBLE
+                IRgenTypeConverse(block, param_type, Type::DOUBLE, irgen_table.register_counter);
+                param_type = Type::DOUBLE;
+            }
+            args.emplace_back(Type2LLVM(param_type), GetNewRegOperand(irgen_table.register_counter));
+        }
+
+        // 生成 `putf` 函数的调用
+        IRgenCallVoid(block, BasicInstruction::VOID, args, name->get_string());
+        return;
+    }
+
+    // 获取函数的返回类型
+    Type::ty return_type = semant_table.FunctionTable[name]->return_type;
+    BasicInstruction::LLVMType llvm_ret_type = Type2LLVM(return_type);
+
+    // 函数参数处理
+    std::vector<std::pair<BasicInstruction::LLVMType, Operand>> args;
+    if (funcr_params != nullptr) {
+        auto params = ((FuncRParams *)funcr_params)->params;
+        auto func_params = semant_table.FunctionTable[name]->formals;
+        assert(params->size() == func_params->size());
+
+        for (size_t i = 0; i < params->size(); ++i) {
+            auto param = (*params)[i];
+            auto expected_type = (*func_params)[i]->attribute.T.type;
+
+            param->codeIR();
+            IRgenTypeConverse(block, param->attribute.T.type, expected_type, irgen_table.register_counter);
+            args.emplace_back(Type2LLVM(expected_type), GetNewRegOperand(irgen_table.register_counter));
+        }
+    }
+
+    // 根据返回类型生成不同的调用指令
+    if (return_type == Type::VOID) {
+        if (args.empty()) {
+            IRgenCallVoidNoArgs(block, llvm_ret_type, name->get_string());
+        } else {
+            IRgenCallVoid(block, llvm_ret_type, args, name->get_string());
+        }
+    } else {
+        if (args.empty()) {
+            IRgenCallNoArgs(block, llvm_ret_type, ++irgen_table.register_counter, name->get_string());
+        } else {
+            IRgenCall(block, llvm_ret_type, ++irgen_table.register_counter, args, name->get_string());
+        }
+        // 设置当前节点的结果寄存器
+        this->attribute.result_reg = irgen_table.register_counter;
+        this->attribute.T.type = return_type;
+    }
     // TODO("FunctionCall CodeIR");
 }
 
@@ -739,7 +886,63 @@ void __FuncFParam::codeIR() {
 }
 
 void __FuncDef::codeIR() {
+    // 进入符号表作用域
+    irgen_table.symbol_table.enter_scope();
 
+    bool is_main_function = (name->get_string() == "main");
+    // 设置函数定义的中间代码指令
+    BasicInstruction::LLVMType func_ret_type = Type2LLVM(return_type);
+    FuncDefInstruction function_instruction = new FunctionDefineInstruction(func_ret_type, name->get_string());  // 使用构造函数创建指针对象
+    llvmIR.NewFunction(function_instruction);  // 将对象指针传递给 NewFunction
+
+    // 创建入口块
+    LLVMBlock entry_block = llvmIR.NewBlock(function_instruction, -1);
+
+    // 如果是 main 函数，插入计时函数 starttime
+    if (is_main_function) {
+        IRgenCallVoid(entry_block, BasicInstruction::VOID, {}, "_sysy_starttime");
+    }
+
+    // 处理函数参数
+    auto &formal_params = *formals;
+    for (size_t i = 0; i < formal_params.size(); ++i) {
+        auto param = formal_params[i];
+        BasicInstruction::LLVMType param_type = Type2LLVM(param->type_decl);
+        int param_reg = ++irgen_table.register_counter;
+        irgen_table.symbol_table.add_Symbol(param->name, param_reg);
+
+        // 如果参数是数组，处理为指针
+        if (param->dims != nullptr) {
+            function_instruction->InsertFormal(BasicInstruction::PTR);
+        } else {
+            function_instruction->InsertFormal(param_type);
+            IRgenAlloca(entry_block, param_type, param_reg);
+            IRgenStore(entry_block, param_type, GetNewRegOperand(i), GetNewRegOperand(param_reg));
+        }
+    }
+    IRgenBRUnCond(entry_block, 1);
+    //entry_block = llvmIR.NewBlock(this_function, -1);
+    function_label = -1;
+    // 生成函数体的代码
+    //block->codeIR();
+
+    // 处理函数结束逻辑
+    LLVMBlock end_block = llvmIR.NewBlock(function_instruction, function_label++);
+    //llvmIR.SetCurrentBlock(end_block);
+
+    // 如果是 main 函数，在函数结束时插入计时函数 stoptime
+    if (is_main_function) {
+        IRgenCallVoid(end_block, BasicInstruction::VOID, {}, "_sysy_stoptime");
+
+        // 如果 main 函数没有显式返回值，默认返回 0
+        IRgenRetImmInt(end_block, BasicInstruction::I32, 0);
+    } else if (func_ret_type == BasicInstruction::VOID) {
+        // 非 main 函数且返回类型为 void 的函数，生成 void 返回
+        IRgenRetVoid(end_block);
+    }
+
+    // 退出符号表作用域
+    irgen_table.symbol_table.exit_scope();
     // TODO("FunctionDef CodeIR");
 }
 
