@@ -3,11 +3,35 @@
 #include "semant.h"
 
 extern SemantTable semant_table;    // 也许你会需要一些语义分析的信息
+static FuncDefInstruction function_now;
+static int now_label = 0;
+Type::ty current_type_decl;
 
 std::map<int, VarAttribute> RegTable;
 
 IRgenTable irgen_table;    // 中间代码生成的辅助变量
 LLVMIR llvmIR;             // 我们需要在这个变量中生成中间代码
+
+BasicInstruction::LLVMType Type2LLVM(Type::ty type) {
+    switch (type) {
+        case Type::VOID:
+            return BasicInstruction::LLVMType::VOID;
+        case Type::INT:
+            return BasicInstruction::LLVMType::I32;
+        case Type::FLOAT:
+            return BasicInstruction::LLVMType::FLOAT32;
+        case Type::BOOL:
+            return BasicInstruction::LLVMType::I1;
+        case Type::PTR:
+            return BasicInstruction::LLVMType::PTR;
+        case Type::DOUBLE:
+            return BasicInstruction::LLVMType::DOUBLE;
+        default:
+            // 可以根据需要处理未知类型
+            return BasicInstruction::LLVMType::VOID;
+    }
+}
+
 
 void AddLibFunctionDeclare();
 
@@ -64,7 +88,12 @@ RegOperand *GetNewRegOperand(int RegNo);
 // generate TypeConverse Instructions from type_src to type_dst
 // eg. you can use fptosi instruction to converse float to int
 // eg. you can use zext instruction to converse bool to int
-void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int src, int dst) {
+// 修改后的函数声明
+void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int src);
+
+// 修改后的函数定义
+void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int src) {
+    int dst = ++irgen_table.max_reg; // 自动分配一个新的寄存器作为目标寄存器
     if (type_src == Type::FLOAT && type_dst == Type::INT) {
         IRgenFptosi(B, src, dst);
     } else if (type_src == Type::INT && type_dst == Type::FLOAT) {
@@ -73,7 +102,7 @@ void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int sr
         IRgenZextI1toI32(B, src, dst);
     } else if (type_src == Type::INT && type_dst == Type::BOOL) {
         // INT to BOOL conversion (non-zero to true, zero to false)
-        IRgenIcmpImmRight(B, BasicInstruction::IcmpCond::NE, src, 0, dst);
+        IRgenIcmpImmRight(B, BasicInstruction::IcmpCond::ne, src, 0, dst);
     } else if (type_src == Type::FLOAT && type_dst == Type::BOOL) {
         // FLOAT to BOOL conversion (non-zero to true, zero to false)
         IRgenFcmpImmRight(B, BasicInstruction::FcmpCond::ONE, src, 0.0f, dst);
@@ -93,7 +122,7 @@ void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int sr
     } else {
         // 其他类型转换（待添加...）
     }
-    // TODO("IRgenTypeConverse. Implement it if you need it");
+    // TODO: 处理其他类型转换
 }
 
 void BasicBlock::InsertInstruction(int pos, Instruction Ins) {
@@ -251,8 +280,8 @@ void UnaryExp_not::codeIR() {
 }
 
 void IntConst::codeIR() {
-    LLVMBlock B = llvmIR.GetCurrentBlock();
-    int result_reg = ++irgen_table.irgen_table.max_reg;
+    LLVMBlock B = llvmIR.GetBlock(function_now, now_label);
+    int result_reg = ++irgen_table.max_reg;
     IRgenArithmeticI32ImmAll(B, BasicInstruction::LLVMIROpcode::ADD, val, 0, result_reg);
     // TODO("IntConst CodeIR");
 }
@@ -319,7 +348,7 @@ void return_stmt_void::codeIR() {
 void ConstInitVal::codeIR() {
     for (auto initializer : *GetList()) {
          initializer->codeIR();
-     }
+    }
     // TODO("ConstInitVal CodeIR");
 }
 
@@ -331,7 +360,7 @@ void ConstInitVal_exp::codeIR() {
 void VarInitVal::codeIR() {
     for (auto initializer : *GetList()) {
          initializer->codeIR();
-     }
+    }
     // TODO("VarInitVal CodeIR");
 }
 
@@ -341,23 +370,26 @@ void VarInitVal_exp::codeIR() {
 }
 
 void VarDef_no_init::codeIR() {
+    LLVMBlock B = llvmIR.GetBlock(function_now, 0);
+    LLVMBlock InitB = llvmIR.GetBlock(function_now, now_label);
+
     irgen_table.symbol_table.add_Symbol(GetName(), ++irgen_table.max_reg);
     int allocation_register = irgen_table.max_reg;
     VarAttribute attribute;
-    attribute.type = type_decl;
+    attribute.type = current_type_decl;
 
     if (GetDims() == nullptr) {
-        IRgenAlloca(B, Type2LLvm[type_decl], allocation_register);
+        IRgenAlloca(B, Type2LLVM(current_type_decl), allocation_register);
         RegTable[allocation_register] = attribute;
 
         Operand value_operand;
-        if (type_decl == Type::INT) {
-            IRgenArithmeticI32ImmAll(InitB, LLVMIROpcode::ADD, 0, 0, ++irgen_table.max_reg);
+        if (current_type_decl == Type::INT) {
+            IRgenArithmeticI32ImmAll(InitB, BasicInstruction::LLVMIROpcode::ADD, 0, 0, ++irgen_table.max_reg);
             value_operand = GetNewRegOperand(irgen_table.max_reg);
-        } else if (type_decl == Type::FLOAT) {
+        } else if (current_type_decl == Type::FLOAT) {
             // TODO: 处理浮点数的默认初始化（后续实现）
         }
-        IRgenStore(InitB, Type2LLvm[type_decl], value_operand, GetNewRegOperand(allocation_register));
+        IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
     } else {
         // TODO: 处理数组的内存分配（后续实现）
     }
@@ -365,30 +397,33 @@ void VarDef_no_init::codeIR() {
 }
 
 void VarDef::codeIR() {
+    LLVMBlock B = llvmIR.GetBlock(function_now, 0);
+    LLVMBlock InitB = llvmIR.GetBlock(function_now, now_label);
+
     irgen_table.symbol_table.add_Symbol(GetName(), ++irgen_table.max_reg);
     int allocation_register = irgen_table.max_reg;
     VarAttribute attribute;
-    attribute.type = type_decl;
+    attribute.type = current_type_decl;
 
     if (GetDims() == nullptr) {
-        IRgenAlloca(B, Type2LLvm[type_decl], allocation_register);
+        IRgenAlloca(B, Type2LLVM(current_type_decl), allocation_register);
         RegTable[allocation_register] = attribute;
 
-        VarInitVal *initializer = GetInit();
+        VarInitVal *initializer = dynamic_cast<VarInitVal*>(GetInit());
         if (initializer != nullptr) {
             initializer->codeIR();
-            IRgenTypeConverse(InitB, initializer->attribute.T.type, type_decl, irgen_table.max_reg);
+            IRgenTypeConverse(InitB, initializer->attribute.T.type, current_type_decl, irgen_table.max_reg);
             Operand value_operand = GetNewRegOperand(irgen_table.max_reg);
-            IRgenStore(InitB, Type2LLvm[type_decl], value_operand, GetNewRegOperand(allocation_register));
+            IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
         } else {
             Operand value_operand;
-            if (type_decl == Type::INT) {
-                IRgenArithmeticI32ImmAll(InitB, LLVMIROpcode::ADD, 0, 0, ++irgen_table.max_reg);
+            if (current_type_decl == Type::INT) {
+                IRgenArithmeticI32ImmAll(InitB, BasicInstruction::LLVMIROpcode::ADD, 0, 0, ++irgen_table.max_reg);
                 value_operand = GetNewRegOperand(irgen_table.max_reg);
-            } else if (type_decl == Type::FLOAT) {
+            } else if (current_type_decl == Type::FLOAT) {
                 // TODO: 处理浮点数的默认初始化（后续实现）
             }
-            IRgenStore(InitB, Type2LLvm[type_decl], value_operand, GetNewRegOperand(allocation_register));
+            IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
         }
     } else {
         // TODO: 处理数组的内存分配和初始化（后续实现）
@@ -397,22 +432,25 @@ void VarDef::codeIR() {
 }
 
 void ConstDef::codeIR() {
+    LLVMBlock B = llvmIR.GetBlock(function_now, 0);
+    LLVMBlock InitB = llvmIR.GetBlock(function_now, now_label);
+
     irgen_table.symbol_table.add_Symbol(GetName(), ++irgen_table.max_reg);
     int allocation_register = irgen_table.max_reg;
     VarAttribute attribute;
-    attribute.type = type_decl;
+    attribute.type = current_type_decl;
 
     if (GetDims() == nullptr) {
-        IRgenAlloca(B, Type2LLvm[type_decl], allocation_register);
+        IRgenAlloca(B, Type2LLVM(current_type_decl), allocation_register);
         RegTable[allocation_register] = attribute;
 
-        ConstInitVal *initializer = GetInit();
+        ConstInitVal *initializer = dynamic_cast<ConstInitVal*>(GetInit());
         assert(initializer != nullptr);
 
         initializer->codeIR();
-        IRgenTypeConverse(InitB, initializer->attribute.T.type, type_decl, irgen_table.max_reg);
+        IRgenTypeConverse(InitB, initializer->attribute.T.type, current_type_decl, irgen_table.max_reg);
         Operand value_operand = GetNewRegOperand(irgen_table.max_reg);
-        IRgenStore(InitB, Type2LLvm[type_decl], value_operand, GetNewRegOperand(allocation_register));
+        IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
     } else {
         // TODO: 处理数组的内存分配和初始化（后续实现）
     }
@@ -420,22 +458,30 @@ void ConstDef::codeIR() {
 }
 
 void VarDecl::codeIR() {
-    LLVMBlock block = llvmIR.GetBlock(function_now, 0);
-    LLVMBlock init_block = llvmIR.GetBlock(function_now, now_label);
+    /*LLVMBlock block = llvmIR.GetBlock(function_now, 0);
+    LLVMBlock init_block = llvmIR.GetBlock(function_now, now_label);*/
+    Type::ty local_type_decl = this->type_decl;
+    Type::ty temp = current_type_decl;
 
     for (auto definition : *var_def_list) {
+        current_type_decl = local_type_decl;
         definition->codeIR();
     }
+    current_type_decl = temp;
     // TODO("VarDecl CodeIR");
 }
 
 void ConstDecl::codeIR() {
-    LLVMBlock block = llvmIR.GetBlock(function_now, 0);
-    LLVMBlock init_block = llvmIR.GetBlock(function_now, now_label);
+    /*LLVMBlock block = llvmIR.GetBlock(function_now, 0);
+    LLVMBlock init_block = llvmIR.GetBlock(function_now, now_label);*/
+    Type::ty local_type_decl = this->type_decl;
+    Type::ty temp = current_type_decl;
 
     for (auto definition : *var_def_list) {
+        current_type_decl = local_type_decl;
         definition->codeIR();
     }
+    current_type_decl = temp;
     // TODO("ConstDecl CodeIR");
 }
 
