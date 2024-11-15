@@ -40,9 +40,6 @@ public:
     std::vector<float> FloatInitVals{};
 
     // TODO():也许你需要添加更多变量
-    int IntConstValue = 0;      // 新增字段，用于存储整数常量值
-    float FloatConstValue = 0.0; // 新增字段，用于存储浮点常量值
-    
     VarAttribute() {
         type = Type::VOID;
         ConstTag = false;
@@ -52,9 +49,25 @@ public:
 // 语法树节点的属性
 class NodeAttribute {
 public:
+    enum opcode {
+        ADD = 0,     // +
+        SUB = 1,     // -
+        MUL = 2,     // *
+        DIV = 3,     // /
+        MOD = 4,     // %
+        LEQ = 5,     // <=
+        LT = 6,      // <
+        GEQ = 7,     // >=
+        GT = 8,      // >
+        EQ = 9,      // ==
+        NEQ = 10,     // !=
+        AND = 11,     // &&
+        OR = 12,    // ||
+    };
     int line_number = -1;
     Type T;
     ConstValue V;
+    int result_reg;
     std::string GetAttributeInfo();
 };
 

@@ -16,7 +16,7 @@ public:
     // 弄懂LLVMIR类是如何存储中间代码后，剩余的就是理解中间代码生成算法了
 
     // TODO():添加更多你需要的成员变量和成员函数
-    int max_reg = -1;
+    int register_counter = -1;
     SymbolRegTable symbol_table;
     IRgenTable() {}
 };
