@@ -9,6 +9,13 @@ LLVMIR llvmIR;             // 我们需要在这个变量中生成中间代码
 static FuncDefInstruction this_function;
 static int function_label = 0;
 Type::ty current_type_decl;
+
+
+Operand current_strptr = nullptr;
+std::map<Symbol, int> GlobalTable;
+std::map<int, int> FormalArrayTable;
+
+
 std::map<int, VarAttribute> RegTable;
 void AddLibFunctionDeclare();
 
@@ -357,7 +364,38 @@ void LOrExp_or::codeIR() {
 void ConstExp::codeIR() { addexp->codeIR(); }
 
 void Lval::codeIR() {
+    LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
+    Operand ptr_operand;
+    VarAttribute lval_attribute;
+    bool formal_array_tag = false;
+    int alloca_reg = irgen_table.symbol_table.lookup(name);
 
+    // 判断是全局变量还是局部变量
+    if (alloca_reg == -1) {
+        ptr_operand = GetNewGlobalOperand(name->get_string());
+        lval_attribute = semant_table.GlobalTable[name];
+    } else {
+        ptr_operand = GetNewRegOperand(alloca_reg);
+        lval_attribute = RegTable[alloca_reg];
+        formal_array_tag = FormalArrayTable[alloca_reg];
+    }
+
+    auto lltype = Type2LLVM(lval_attribute.type);
+
+    // 保留数组条件判断，但暂时不处理数组
+    if (attribute.T.type == Type::PTR || dims != nullptr) {
+        // TODO: 处理数组索引
+    }
+
+    // 存储指针操作数
+    ptr = ptr_operand;
+
+    // 如果是右值，加载值
+    if (!is_left) {
+        if (attribute.T.type != Type::PTR) {
+            IRgenLoad(B, lltype, ++irgen_table.register_counter, ptr_operand);
+        }
+    }
     // TODO("Lval CodeIR");
 }
 
@@ -394,61 +432,145 @@ void IntConst::codeIR() {
 }
 
 void FloatConst::codeIR() {
-
+    LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
+    int result_reg = ++irgen_table.register_counter;
+    IRgenArithmeticF32ImmAll(B, BasicInstruction::LLVMIROpcode::FADD, val, 0.0f, result_reg);
     // TODO("FloatConst CodeIR");
 }
 
 void StringConst::codeIR() {
-
+    int id = GlobalTable[str];
+    current_strptr = GetNewGlobalOperand(".str" + std::to_string(id));
     // TODO("StringConst CodeIR");
 }
 
 void PrimaryExp_branch::codeIR() { exp->codeIR(); }
 
 void assign_stmt::codeIR() {
-
+    LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    lval->codeIR();
+    exp->codeIR();
+    int reg = irgen_table.register_counter;
+    IRgenTypeConverse(block, exp->attribute.T.type, lval->attribute.T.type, reg);
+    IRgenStore(block, Type2LLVM(lval->attribute.T.type), GetNewRegOperand(reg), ((Lval *)lval)->ptr);
     // TODO("AssignStmt CodeIR");
 }
 
-void expr_stmt::codeIR() { exp->codeIR(); }
+void expr_stmt::codeIR() {
+    exp->codeIR();
+}
 
 void block_stmt::codeIR() {
-
+    irgen_table.symbol_table.enter_scope();
+    b->codeIR();
+    irgen_table.symbol_table.exit_scope();
     // TODO("BlockStmt CodeIR");
 }
 
 void ifelse_stmt::codeIR() {
+    int ifLabel = llvmIR.NewBlock(this_function, function_label)->block_id;
+    int elseLabel = llvmIR.NewBlock(this_function, function_label)->block_id;
+    int endLabel = llvmIR.NewBlock(this_function, function_label)->block_id;
 
+    Cond->true_label = ifLabel;
+    Cond->false_label = elseLabel;
+    Cond->codeIR();
+    LLVMBlock block1 = llvmIR.GetBlock(this_function, function_label);
+    IRgenTypeConverse(block1, Cond->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+    IRgenBrCond(block1, irgen_table.register_counter, ifLabel, elseLabel);
+
+    function_label = ifLabel;
+    ifstmt->codeIR();
+    LLVMBlock block2 = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(block2, endLabel);
+
+    function_label = elseLabel;
+    elsestmt->codeIR();
+    LLVMBlock block3 = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(block3, endLabel);
+
+    function_label = endLabel;
     // TODO("IfElseStmt CodeIR");
 }
 
 void if_stmt::codeIR() {
+    int ifLabel = llvmIR.NewBlock(this_function, function_label)->block_id;
+    int endLabel = llvmIR.NewBlock(this_function, function_label)->block_id;
 
+    Cond->true_label = ifLabel;
+    Cond->false_label = endLabel;
+    Cond->codeIR();
+    LLVMBlock block1 = llvmIR.GetBlock(this_function, function_label);
+    IRgenTypeConverse(block1, Cond->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+    IRgenBrCond(block1, irgen_table.register_counter, ifLabel, endLabel);
+
+    function_label = ifLabel;
+    ifstmt->codeIR();
+    LLVMBlock block2 = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(block2, endLabel);
+
+    function_label = endLabel;
     // TODO("IfStmt CodeIR");
 }
 
 void while_stmt::codeIR() {
+    int judgeLabel = llvmIR.NewBlock(this_function, function_label)->block_id;
+    int bodyLabel = llvmIR.NewBlock(this_function, function_label)->block_id;
+    int endLabel = llvmIR.NewBlock(this_function, function_label)->block_id;
 
+    int tempStartLabel = irgen_table.loop_start_label;
+    int tempEndLabel = irgen_table.loop_end_label;
+    irgen_table.loop_start_label = judgeLabel;
+    irgen_table.loop_end_label = endLabel;
+
+    LLVMBlock block1 = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(block1, judgeLabel);
+
+    function_label = judgeLabel;
+    Cond->true_label = bodyLabel;
+    Cond->false_label = endLabel;
+    Cond->codeIR();
+    LLVMBlock block2 = llvmIR.GetBlock(this_function, function_label);
+    IRgenTypeConverse(block2, Cond->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+    IRgenBrCond(block2, irgen_table.register_counter, bodyLabel, endLabel);
+
+    function_label = bodyLabel;
+    body->codeIR();
+    LLVMBlock block3 = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(block3, judgeLabel);
+
+    function_label = endLabel;
+
+    irgen_table.loop_start_label = tempStartLabel;
+    irgen_table.loop_end_label = tempEndLabel;
     // TODO("WhileStmt CodeIR");
 }
 
 void continue_stmt::codeIR() {
-
+    LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(block, irgen_table.loop_start_label);
+    function_label = llvmIR.NewBlock(this_function, function_label)->block_id;
     // TODO("ContinueStmt CodeIR");
 }
 
 void break_stmt::codeIR() {
-
+    LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(block, irgen_table.loop_end_label);
+    function_label = llvmIR.NewBlock(this_function, function_label)->block_id;
     // TODO("BreakStmt CodeIR");
 }
 
 void return_stmt::codeIR() {
-
+    return_exp->codeIR();
+    LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    IRgenTypeConverse(block, return_exp->attribute.T.type, irgen_table.function_returntype, irgen_table.register_counter);
+    IRgenRetReg(block, Type2LLVM(irgen_table.function_returntype), irgen_table.register_counter);
     // TODO("ReturnStmt CodeIR");
 }
 
 void return_stmt_void::codeIR() {
-
+    LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    IRgenRetVoid(block);
     // TODO("ReturnStmtVoid CodeIR");
 }
 
@@ -593,17 +715,21 @@ void ConstDecl::codeIR() {
 }
 
 void BlockItem_Decl::codeIR() {
-
+    decl->codeIR();
     // TODO("BlockItemDecl CodeIR");
 }
 
 void BlockItem_Stmt::codeIR() {
-
+    stmt->codeIR();
     // TODO("BlockItemStmt CodeIR");
 }
 
 void __Block::codeIR() {
-
+    irgen_table.symbol_table.enter_scope();
+    for (auto item : *item_list) {
+        item->codeIR();
+    }
+    irgen_table.symbol_table.exit_scope();
     // TODO("Block CodeIR");
 }
 
