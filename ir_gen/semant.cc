@@ -701,6 +701,7 @@ void ConstExp::TypeCheck() {
 }
 
 void Lval::TypeCheck() { 
+    is_left = false;
     VarAttribute val;
     // 检查变量是否在本地作用域中声明
     auto global_entry = semant_table.GlobalTable.find(name);
@@ -827,9 +828,6 @@ void Func_call::TypeCheck() {
     attribute.T.type = func_def->return_type;
 }
 
-
-
-
 void UnaryExp_plus::TypeCheck() { 
 
     // 检查运算数类型是否为 void
@@ -945,7 +943,7 @@ void assign_stmt::TypeCheck() {
     // 设置类型变量，便于后续检查
     Type::ty left_type = lval->attribute.T.type;
     Type::ty right_type = exp->attribute.T.type;
-
+    ((Lval *)lval)->is_left = true; 
     // 检查左值是否为常量，常量不能被赋值
     if (lval->attribute.V.ConstTag) {
         error_msgs.push_back("Error: Left-hand side cannot be a constant at line " + std::to_string(line_number) + "\n");
@@ -1486,4 +1484,5 @@ void CompUnit_Decl::TypeCheck() {
 }
 
 void CompUnit_FuncDef::TypeCheck() { func_def->TypeCheck(); }
+
 

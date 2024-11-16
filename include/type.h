@@ -63,6 +63,7 @@ public:
         NEQ = 10,     // !=
         AND = 11,     // &&
         OR = 12,    // ||
+        NOT = 13,    // !
     };
     int line_number = -1;
     Type T;
