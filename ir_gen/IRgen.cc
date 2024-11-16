@@ -9,12 +9,15 @@ LLVMIR llvmIR;             // 我们需要在这个变量中生成中间代码
 static FuncDefInstruction this_function;
 static int function_label = 0;
 Type::ty current_type_decl;
-
+static Type::ty function_returntype = Type::VOID;
 Operand current_strptr = nullptr;
 std::map<Symbol, int> GlobalTable;
-std::map<int, int> FormalArrayTable;
-
 std::map<int, VarAttribute> RegTable;
+std::map<int, int> FormalArrayTable;
+std::map<FuncDefInstruction, int> max_label_map{};
+std::map<FuncDefInstruction, int> max_reg_map{};
+int max_reg = -1;
+int max_label = -1;
 void AddLibFunctionDeclare();
 
 BasicInstruction::LLVMType Type2LLVM(Type::ty type) {
@@ -95,34 +98,30 @@ void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int sr
 
 // 修改后的函数定义
 void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int src) {
-    int dst = ++irgen_table.register_counter; // 自动分配一个新的寄存器作为目标寄存器
-    if (type_src == Type::FLOAT && type_dst == Type::INT) {
-        IRgenFptosi(B, src, dst);
-    } else if (type_src == Type::INT && type_dst == Type::FLOAT) {
-        IRgenSitofp(B, src, dst);
-    } else if (type_src == Type::BOOL && type_dst == Type::INT) {
-        IRgenZextI1toI32(B, src, dst);
-    } else if (type_src == Type::INT && type_dst == Type::BOOL) {
-        // INT to BOOL conversion (non-zero to true, zero to false)
-        IRgenIcmpImmRight(B, BasicInstruction::IcmpCond::ne, src, 0, dst);
-    } else if (type_src == Type::FLOAT && type_dst == Type::BOOL) {
-        // FLOAT to BOOL conversion (non-zero to true, zero to false)
-        IRgenFcmpImmRight(B, BasicInstruction::FcmpCond::ONE, src, 0.0f, dst);
-    } else if (type_src == Type::BOOL && type_dst == Type::FLOAT) {
-        // BOOL to FLOAT conversion (true to 1.0, false to 0.0)
-        IRgenSitofp(B, src, dst);
-    } else if (type_src == Type::INT && type_dst == Type::INT) {
-        // INT to INT conversion (no-op)
-        if (src != dst) {
-            IRgenArithmeticI32(B, BasicInstruction::LLVMIROpcode::ADD, src, 0, dst);
-        }
-    } else if (type_src == Type::FLOAT && type_dst == Type::FLOAT) {
-        // FLOAT to FLOAT conversion (no-op)
-        if (src != dst) {
-            IRgenArithmeticF32(B, BasicInstruction::LLVMIROpcode::FADD, src, 0.0f, dst);
-        }
+    if (type_src == type_dst) {
+        return;
     } else {
-        // 其他类型转换（待添加...）
+        int dst = ++irgen_table.register_counter; // 自动分配一个新的寄存器作为目标寄存器
+        if (type_src == Type::FLOAT && type_dst == Type::INT) {
+            IRgenFptosi(B, src, dst);
+        } else if (type_src == Type::INT && type_dst == Type::FLOAT) {
+            IRgenSitofp(B, src, dst);
+        } else if (type_src == Type::BOOL && type_dst == Type::INT) {
+            IRgenZextI1toI32(B, src, dst);
+        } else if (type_src == Type::INT && type_dst == Type::BOOL) {
+            // INT to BOOL conversion (non-zero to true, zero to false)
+            IRgenIcmpImmRight(B, BasicInstruction::IcmpCond::ne, src, 0, dst);
+        } else if (type_src == Type::FLOAT && type_dst == Type::BOOL) {
+            // FLOAT to BOOL conversion (non-zero to true, zero to false)
+            IRgenFcmpImmRight(B, BasicInstruction::FcmpCond::ONE, src, 0.0f, dst);
+        } else if (type_src == Type::BOOL && type_dst == Type::FLOAT) {
+            // BOOL to FLOAT conversion (true to 1.0, false to 0.0)
+            IRgenZextI1toI32(B, src, dst);
+            src = irgen_table.register_counter;
+            irgen_table.register_counter++;
+            dst = irgen_table.register_counter;
+            IRgenSitofp(B, src, dst);
+        } 
     }
     // TODO: 处理其他类型转换
 }
@@ -889,57 +888,82 @@ void __FuncDef::codeIR() {
     // 进入符号表作用域
     irgen_table.symbol_table.enter_scope();
 
-    bool is_main_function = (name->get_string() == "main");
-    // 设置函数定义的中间代码指令
+    // 设置返回类型和函数名称
     BasicInstruction::LLVMType func_ret_type = Type2LLVM(return_type);
-    FuncDefInstruction function_instruction = new FunctionDefineInstruction(func_ret_type, name->get_string());  // 使用构造函数创建指针对象
-    llvmIR.NewFunction(function_instruction);  // 将对象指针传递给 NewFunction
+    FuncDefInstruction function_instruction = new FunctionDefineInstruction(func_ret_type, name->get_string());
+    
+    // 清空寄存器和数组表
+    irgen_table.register_counter = -1;
+    RegTable.clear();
+    FormalArrayTable.clear();
+    function_label = 0;
+    max_label = -1;
+    this_function = function_instruction;
+    irgen_table.function_returntype = return_type;
 
-    // 创建入口块
-    LLVMBlock entry_block = llvmIR.NewBlock(function_instruction, -1);
+    // 新建函数并创建入口块
+    llvmIR.NewFunction(this_function);
+    LLVMBlock B = llvmIR.NewBlock(this_function, ++max_label);
 
-    // 如果是 main 函数，插入计时函数 starttime
-    if (is_main_function) {
-        IRgenCallVoid(entry_block, BasicInstruction::VOID, {}, "_sysy_starttime");
-    }
+    /*auto formal_vector = *formals;
+    irgen_table.register_counter = formal_vector.size() - 1;
+    for (int i = 0; i < formal_vector.size(); ++i) {
+        auto formal = formal_vector[i];
+        VarAttribute val;
+        val.type = formal->type_decl;
+        BasicInstruction::LLVMType lltype = Type2LLVM(return_type);
+        if (formal->dims != nullptr) {    // formal is array
+            // in SysY, we can assume that we can not modify the array address, so we do not need alloca
+            function_instruction->InsertFormal(AllocaInstruction::LLVMType::PTR);
 
-    // 处理函数参数
-    auto &formal_params = *formals;
-    for (size_t i = 0; i < formal_params.size(); ++i) {
-        auto param = formal_params[i];
-        BasicInstruction::LLVMType param_type = Type2LLVM(param->type_decl);
-        int param_reg = ++irgen_table.register_counter;
-        irgen_table.symbol_table.add_Symbol(param->name, param_reg);
+            for (int i = 1; i < formal->dims->size(); ++i) {    // in IRgen, we ignore the first dim of the
+                                                                // formal
+                auto d = formal->dims->at(i);
+                val.dims.push_back(d->attribute.V.val.IntVal);
+            }
 
-        // 如果参数是数组，处理为指针
-        if (param->dims != nullptr) {
-            function_instruction->InsertFormal(BasicInstruction::PTR);
-        } else {
-            function_instruction->InsertFormal(param_type);
-            IRgenAlloca(entry_block, param_type, param_reg);
-            IRgenStore(entry_block, param_type, GetNewRegOperand(i), GetNewRegOperand(param_reg));
+            FormalArrayTable[i] = 1;
+            irgen_table.symbol_table.add_Symbol(formal->name, i);
+            RegTable[i] = val;
+        } else {    // formal is not array
+            function_instruction->InsertFormal(lltype);
+            IRgenAlloca(entry_block, lltype, ++irgen_table.register_counter);
+            IRgenStore(entry_block, lltype, GetNewRegOperand(i), GetNewRegOperand(irgen_table.register_counter));
+            irgen_table.symbol_table.add_Symbol(formal->name, irgen_table.register_counter);
+            RegTable[irgen_table.register_counter] = val;
+        }
+    }*/
+    // 无条件跳转到函数体块
+    IRgenBRUnCond(B, 1);
+
+    // 新建函数体块并生成代码
+    B = llvmIR.NewBlock(this_function, max_label);
+    function_label = max_label;
+    block->codeIR();
+
+    // 处理无返回值情况
+    for (auto& block_pair : llvmIR.function_block_map[function_instruction]) {
+        LLVMBlock B = block_pair.second;
+
+        // 检查基本块是否为空，或是否缺少返回或跳转指令
+        if (B->Instruction_list.empty() || 
+            (B->Instruction_list.back()->GetOpcode() != AllocaInstruction::RET && 
+             B->Instruction_list.back()->GetOpcode() != AllocaInstruction::BR_COND &&
+             B->Instruction_list.back()->GetOpcode() != AllocaInstruction::BR_UNCOND)) {
+            
+            // 如果没有返回或跳转指令，根据返回类型插入默认返回
+            if (return_type == Type::VOID) {
+                IRgenRetVoid(B);
+            } else if (return_type == Type::INT) {
+                IRgenRetImmInt(B, BasicInstruction::I32, 0);
+            } else if (return_type == Type::FLOAT) {
+                IRgenRetImmFloat(B, BasicInstruction::FLOAT32, 0);
+            }
         }
     }
-    IRgenBRUnCond(entry_block, 1);
-    //entry_block = llvmIR.NewBlock(this_function, -1);
-    function_label = -1;
-    // 生成函数体的代码
-    //block->codeIR();
-
-    // 处理函数结束逻辑
-    LLVMBlock end_block = llvmIR.NewBlock(function_instruction, function_label++);
-    //llvmIR.SetCurrentBlock(end_block);
-
-    // 如果是 main 函数，在函数结束时插入计时函数 stoptime
-    if (is_main_function) {
-        IRgenCallVoid(end_block, BasicInstruction::VOID, {}, "_sysy_stoptime");
-
-        // 如果 main 函数没有显式返回值，默认返回 0
-        IRgenRetImmInt(end_block, BasicInstruction::I32, 0);
-    } else if (func_ret_type == BasicInstruction::VOID) {
-        // 非 main 函数且返回类型为 void 的函数，生成 void 返回
-        IRgenRetVoid(end_block);
-    }
+    // 更新最大寄存器号和标签号
+    max_reg_map[function_instruction] = irgen_table.register_counter;
+    max_label_map[function_instruction] = max_label;
 
     // 退出符号表作用域
     irgen_table.symbol_table.exit_scope();
