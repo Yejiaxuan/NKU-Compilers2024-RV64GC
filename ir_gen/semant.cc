@@ -1327,56 +1327,160 @@ void __FuncDef::TypeCheck() {
     semant_table.symbol_table.exit_scope();
 }
 
-void CompUnit_Decl::TypeCheck() { 
-    // 首先检查声明类型是否为常量声明或变量声明
-    if (auto var_decl = dynamic_cast<VarDecl*>(decl)) {
-        var_decl->TypeCheck();
-        // 如果是变量声明，检查每个变量的重复声明
-        for (auto &var_def : *(var_decl->var_def_list)) {
-            auto var_def_cast = dynamic_cast<VarDef*>(var_def);
-            if (!var_def_cast) {
-                error_msgs.push_back("Invalid variable definition at line " + std::to_string(line_number) + "\n");
-                continue;
-            }
-            Symbol var_name = var_def_cast->name;
-            // 检查是否在全局作用域中重复声明
-            if (semant_table.GlobalTable.find(var_name) == semant_table.GlobalTable.end()) {
-                // 将全局变量添加到 GlobalTable 中
-                VarAttribute var_attr;
-                var_attr.type = var_def_cast->attribute.T.type;
-                var_attr.ConstTag = false; // 标记为非常量
-                semant_table.GlobalTable[var_name] = var_attr;
-            }
+std::map<std::string, VarAttribute> ConstGlobalMap;
+std::map<std::string, VarAttribute> StaticGlobalMap; 
 
-            // 对变量初始化进行类型检查
-            //var_def->TypeCheck();
+// Type::VOID -> VOID    Type::Int -> I32    Type::FLOAT -> FLOAT32
+BasicInstruction::LLVMType Type2LLvm[6] = {BasicInstruction::LLVMType::VOID, BasicInstruction::LLVMType::I32, BasicInstruction::LLVMType::FLOAT32,
+                         BasicInstruction::LLVMType::I1,   BasicInstruction::LLVMType::PTR, BasicInstruction::LLVMType::DOUBLE};
+
+int FindMinDimStep(const VarAttribute &val, int relativePos, int dimsIdx, int &max_subBlock_sz) {
+    int min_dim_step = 1;
+    int blockSz = 1;
+    for (int i = dimsIdx + 1; i < val.dims.size(); i++) {
+        blockSz *= val.dims[i];
+    }
+    while (relativePos % blockSz != 0) {
+        min_dim_step++;
+        blockSz /= val.dims[dimsIdx + min_dim_step - 1];
+    }
+    max_subBlock_sz = blockSz;
+    return min_dim_step;
+}
+
+void RecursiveArrayInit(InitVal init, VarAttribute &val, int begPos, int endPos, int dimsIdx) {
+    // dimsIdx from 0
+    int pos = begPos;
+
+    // Old Policy: One { } for one dim
+
+    for (InitVal iv : *(init->GetList())) {
+        if (iv->IsExp()) {
+            if (iv->attribute.T.type == Type::VOID) {
+                error_msgs.push_back("exp can not be void in initval in line " + std::to_string(init->GetLineNumber()) +
+                                     "\n");
+            }
+            if (val.type == Type::INT) {
+                if (iv->attribute.T.type == Type::INT) {
+                    val.IntInitVals[pos] = iv->attribute.V.val.IntVal;
+                } else if (iv->attribute.T.type == Type::FLOAT) {
+                    val.IntInitVals[pos] = iv->attribute.V.val.FloatVal;
+                }
+            }
+            if (val.type == Type::FLOAT) {
+                if (iv->attribute.T.type == Type::INT) {
+                    val.FloatInitVals[pos] = iv->attribute.V.val.IntVal;
+                } else if (iv->attribute.T.type == Type::FLOAT) {
+                    val.FloatInitVals[pos] = iv->attribute.V.val.FloatVal;
+                }
+            }
+            pos++;
+        } else {
+            // New Policy: One { } for the max align-able dim
+            // More informations see comments above FindMinDimStep
+            int max_subBlock_sz = 0;
+            int min_dim_step = FindMinDimStep(val, pos - begPos, dimsIdx, max_subBlock_sz);
+            RecursiveArrayInit(iv, val, pos, pos + max_subBlock_sz - 1, dimsIdx + min_dim_step);
+            pos += max_subBlock_sz;
         }
-    } else if (auto const_decl = dynamic_cast<ConstDecl*>(decl)) {
-        const_decl->TypeCheck();
-        // 如果是常量声明，检查每个常量的重复声明
-        for (auto const_def : *(const_decl->var_def_list)) {
-            auto const_def_cast = dynamic_cast<ConstDef*>(const_def);
-            if (!const_def_cast) {
-                error_msgs.push_back("Invalid constant definition at line " + std::to_string(line_number) + "\n");
-                continue;
-            }
-            Symbol const_name = const_def_cast->name;
+    }
+}
 
-            // 检查是否在全局作用域中重复声明
-            if (semant_table.GlobalTable.find(const_name) == semant_table.GlobalTable.end()) {
-                // 将全局常量添加到 GlobalTable 中
-                VarAttribute const_attr;
-                const_attr.type = const_def_cast->attribute.T.type;
-                const_attr.ConstTag = true; // 标记为常量
-                semant_table.GlobalTable[const_name] = const_attr;
+void SolveIntInitVal(InitVal init, VarAttribute &val)    // used for global or const
+{
+    val.type = Type::INT;
+    int arraySz = 1;
+    for (auto d : val.dims) {
+        arraySz *= d;
+    }
+    val.IntInitVals.resize(arraySz, 0);
+    if (val.dims.empty()) {
+        if (init->GetExp() != nullptr) {
+            if (init->GetExp()->attribute.T.type == Type::VOID) {
+                error_msgs.push_back("Expression can not be void in initval in line " +
+                                     std::to_string(init->GetLineNumber()) + "\n");
+            } else if (init->GetExp()->attribute.T.type == Type::INT) {
+                val.IntInitVals[0] = init->GetExp()->attribute.V.val.IntVal;
+            } else if (init->GetExp()->attribute.T.type == Type::FLOAT) {
+                val.IntInitVals[0] = init->GetExp()->attribute.V.val.FloatVal;
             }
-
-            // 对常量初始化进行类型检查
-            //const_def->TypeCheck();
         }
+        return;
     } else {
-        // 如果 decl 既不是变量声明也不是常量声明，报告错误
-        error_msgs.push_back("Unknown declaration type at line " + std::to_string(line_number) + "\n");
+        if (init->IsExp()) {
+            if ((init)->GetExp() != nullptr) {
+                error_msgs.push_back("InitVal can not be exp in line " + std::to_string(init->GetLineNumber()) + "\n");
+            }
+            return;
+        } else {
+            RecursiveArrayInit(init, val, 0, arraySz - 1, 0);
+        }
+    }
+}
+
+void CompUnit_Decl::TypeCheck() { 
+    Type::ty type_decl = decl->GetTypedecl();
+    auto def_vector = *decl->GetDefs();
+    for (auto def : def_vector) {
+
+        if (semant_table.GlobalTable.find(def->GetName()) != semant_table.GlobalTable.end()) {
+            error_msgs.push_back("multilpe difinitions of vars in line " + std::to_string(line_number) + "\n");
+        }
+
+        VarAttribute val;
+        val.ConstTag = def->IsConst();
+        val.type = (Type::ty)type_decl;
+        def->scope = 0;
+
+        if (def->GetDims() != nullptr) {
+            auto dim_vector = *def->GetDims();
+            for (auto d : dim_vector) {
+                d->TypeCheck();
+                if (d->attribute.V.ConstTag == false) {
+                    error_msgs.push_back("Array Dim must be const expression " + std::to_string(line_number) + "\n");
+                }
+                if (d->attribute.T.type == Type::FLOAT) {
+                    error_msgs.push_back("Array Dim can not be float in line " + std::to_string(line_number) + "\n");
+                }
+            }
+            for (auto d : dim_vector) {
+                val.dims.push_back(d->attribute.V.val.IntVal);
+            }
+        }
+
+        InitVal init = def->GetInit();
+        if (init != nullptr) {
+            init->TypeCheck();
+            if (type_decl == Type::INT) {
+                SolveIntInitVal(init, val);
+            } else if (type_decl == Type::FLOAT) {
+                // SolveFloatInitVal(init, val);
+            }
+        }
+
+        if (def->IsConst()) {
+            ConstGlobalMap[def->GetName()->get_string()] = val;
+        }
+
+        StaticGlobalMap[def->GetName()->get_string()] = val;
+        semant_table.GlobalTable[def->GetName()] = val;
+
+        // add Global Decl llvm ins
+        BasicInstruction::LLVMType lltype = Type2LLvm[type_decl];
+
+        Instruction globalDecl;
+        if (def->GetDims() != nullptr) {
+            globalDecl = new GlobalVarDefineInstruction(def->GetName()->get_string(), lltype, val);
+        } else if (init == nullptr) {
+            globalDecl = new GlobalVarDefineInstruction(def->GetName()->get_string(), lltype, nullptr);
+        } else if (lltype == BasicInstruction::I32) {
+            globalDecl =
+            new GlobalVarDefineInstruction(def->GetName()->get_string(), lltype, new ImmI32Operand(val.IntInitVals[0]));
+        } else if (lltype == BasicInstruction::FLOAT32) {
+            globalDecl = new GlobalVarDefineInstruction(def->GetName()->get_string(), lltype,
+                                                        new ImmF32Operand(val.FloatInitVals[0]));
+        }
+        llvmIR.global_def.push_back(globalDecl);
     }
     //TODO("CompUnitDecl Semant");
 }
