@@ -715,6 +715,15 @@ void LAndExp_and::TypeCheck() {
             attribute.V.val.BoolVal = (leftVal != 0.0f) && (rightVal != 0.0f);
         }
     }
+    // 处理 int 类型
+    else if (leftType == Type::INT && rightType == Type::INT) {
+        attribute.V.ConstTag = landexp->attribute.V.ConstTag && eqexp->attribute.V.ConstTag;
+
+        // 如果是常量表达式，直接进行计算
+        if (attribute.V.ConstTag) {
+            attribute.V.val.BoolVal = (landexp->attribute.V.val.IntVal != 0) && (eqexp->attribute.V.val.IntVal != 0);
+        }
+    }
     // 处理不兼容的类型组合
     else if ((leftType == Type::INT && rightType == Type::INT) || (leftType == Type::FLOAT && rightType == Type::FLOAT)) {
         attribute.V.ConstTag = landexp->attribute.V.ConstTag && eqexp->attribute.V.ConstTag;
@@ -775,6 +784,15 @@ void LOrExp_or::TypeCheck() {
             attribute.V.val.BoolVal = (leftVal != 0.0f) || (rightVal != 0.0f); // 非零视为 true
         }
     }
+    // 处理 int 类型
+    else if (leftType == Type::INT && rightType == Type::INT) {
+        attribute.V.ConstTag = lorexp->attribute.V.ConstTag && landexp->attribute.V.ConstTag;
+
+        // 如果是常量表达式，直接进行计算
+        if (attribute.V.ConstTag) {
+            attribute.V.val.BoolVal = (lorexp->attribute.V.val.IntVal != 0) || (landexp->attribute.V.val.IntVal != 0);
+        }
+    }
     // 处理不兼容的类型组合
     else {
         error_msgs.push_back("Error: Both operands of || must be of type bool at line " + std::to_string(line_number));
@@ -825,6 +843,22 @@ void Lval::TypeCheck() {
         error_msgs.push_back("Error: Constant '" + name->get_string() + "' cannot be assigned to at line " + std::to_string(line_number) + "\n");
         return;
     }*/
+    // 如果是常量，设置其具体值
+    if (attribute.V.ConstTag) {
+        if (val.dims.empty()) { // 标量变量
+            if (attribute.T.type == Type::INT && !val.IntInitVals.empty()) {
+                attribute.V.val.IntVal = val.IntInitVals[0];
+            } else if (attribute.T.type == Type::FLOAT && !val.FloatInitVals.empty()) {
+                attribute.V.val.FloatVal = val.FloatInitVals[0];
+            }
+        } else {
+            // 数组常量暂不支持折叠，设置为不可变
+            attribute.V.ConstTag = false;
+        }
+    } else {
+        // 非常量变量
+        attribute.V.ConstTag = false;
+    }
 
     // 数组维度检查
     if (dims != nullptr) {
