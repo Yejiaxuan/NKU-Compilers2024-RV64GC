@@ -514,32 +514,34 @@ void Func_call::codeIR() {
     Type::ty return_type = semant_table.FunctionTable[name]->return_type;
     BasicInstruction::LLVMType llvm_ret_type = Type2LLVM(return_type);
 
-    // 函数参数处理
-    std::vector<std::pair<BasicInstruction::LLVMType, Operand>> args;
+    // 处理函数参数
+    std::vector<std::pair<enum BasicInstruction::LLVMType, Operand>> args;
     if (funcr_params != nullptr) {
-        auto params = ((FuncRParams *)funcr_params)->params;
-        auto func_params = semant_table.FunctionTable[name]->formals;
-        assert(params->size() == func_params->size());
+         auto params = ((FuncRParams *)funcr_params)->params;
+        for (auto param : *params) {
+             param->codeIR();
+             // 获取参数的类型和值
+            Type::ty param_type = param->attribute.T.type;
+             args.emplace_back(Type2LLVM(param_type), 
+                                GetNewRegOperand(irgen_table.register_counter));
+         }
+     }
 
-        for (size_t i = 0; i < params->size(); ++i) {
-            auto param = (*params)[i];
-            auto expected_type = (*func_params)[i]->attribute.T.type;
-
-            param->codeIR();
-            IRgenTypeConverse(block, param->attribute.T.type, expected_type, irgen_table.register_counter);
-            args.emplace_back(Type2LLVM(expected_type), GetNewRegOperand(irgen_table.register_counter));
-        }
-        if (return_type == Type::VOID) {
-            IRgenCallVoid(block, llvm_ret_type, args, name->get_string());
-        } else {
-            IRgenCall(block, llvm_ret_type, ++irgen_table.register_counter, args, name->get_string());
-        }
-    } else {
-        if (return_type == Type::VOID) {
-            IRgenCallVoidNoArgs(block, llvm_ret_type, name->get_string());
-        } else {
-            IRgenCallNoArgs(block, llvm_ret_type, ++irgen_table.register_counter, name->get_string());
-        }
+     // 生成函数调用指令
+    if (return_type == Type::VOID) {
+         if (args.empty()) {
+               IRgenCallVoidNoArgs(block, llvm_ret_type, name->get_string());
+         } else {
+              IRgenCallVoid(block, llvm_ret_type, args, name->get_string());
+         }
+     } else {
+         if (args.empty()) {
+              IRgenCallNoArgs(block, llvm_ret_type, ++irgen_table.register_counter, name->get_string());
+         } else {
+               IRgenCall(block, llvm_ret_type, ++irgen_table.register_counter, args, name->get_string());
+         }
+         this->attribute.result_reg = irgen_table.register_counter;
+         this->attribute.T.type = return_type;
     }
 
     /*// 根据返回类型生成不同的调用指令
