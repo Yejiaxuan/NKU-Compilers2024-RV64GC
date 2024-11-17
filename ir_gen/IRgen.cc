@@ -857,7 +857,7 @@ void VarDef::codeIR() {
         IRgenAlloca(B, Type2LLVM(current_type_decl), allocation_register);
         RegTable[allocation_register] = attribute;
 
-        VarInitVal *initializer = dynamic_cast<VarInitVal*>(GetInit());
+        InitVal initializer = GetInit();
         if (initializer != nullptr) {
             initializer->codeIR();
             IRgenTypeConverse(InitB, initializer->attribute.T.type, current_type_decl, irgen_table.register_counter);
@@ -892,7 +892,7 @@ void ConstDef::codeIR() {
         IRgenAlloca(B, Type2LLVM(current_type_decl), allocation_register);
         RegTable[allocation_register] = attribute;
 
-        ConstInitVal *initializer = dynamic_cast<ConstInitVal*>(GetInit());
+        InitVal initializer = GetInit();
         assert(initializer != nullptr);
 
         initializer->codeIR();

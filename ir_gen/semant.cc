@@ -51,12 +51,32 @@ void AddExp_plus::TypeCheck() {
     addexp->TypeCheck();
     mulexp->TypeCheck();
 
+    // 隐式类型转换
+    Type::ty leftType = addexp->attribute.T.type;
+    Type::ty rightType = mulexp->attribute.T.type;
+
+    // bool 转 int
+    if (leftType == Type::BOOL) {
+        addexp->attribute.T.type = Type::INT;
+    }
+    if (rightType == Type::BOOL) {
+        mulexp->attribute.T.type = Type::INT;
+    }
+
+    // int 转 float
+    if (addexp->attribute.T.type == Type::INT && mulexp->attribute.T.type == Type::FLOAT) {
+        addexp->attribute.T.type = Type::FLOAT;
+    }
+    if (addexp->attribute.T.type == Type::FLOAT && mulexp->attribute.T.type == Type::INT) {
+        mulexp->attribute.T.type = Type::FLOAT;
+    }
+
     // 检查运算数类型是否为void
     if (addexp->attribute.T.type == Type::VOID || mulexp->attribute.T.type == Type::VOID) {
         error_msgs.push_back("Addition error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT; // 继续分析，假设结果类型为int
+        attribute.T.type = Type::INT;
     } else {
-        // 类型提升（int和float）
+        // 类型提升
         if (addexp->attribute.T.type == Type::FLOAT || mulexp->attribute.T.type == Type::FLOAT) {
             attribute.T.type = Type::FLOAT;
         } else {
@@ -64,7 +84,7 @@ void AddExp_plus::TypeCheck() {
         }
     }
 
-    // 处理常量折叠
+    // 常量折叠
     attribute.V.ConstTag = addexp->attribute.V.ConstTag && mulexp->attribute.V.ConstTag;
     if (attribute.V.ConstTag) {
         if (attribute.T.type == Type::INT) {
@@ -81,6 +101,26 @@ void AddExp_plus::TypeCheck() {
 void AddExp_sub::TypeCheck() {
     addexp->TypeCheck();
     mulexp->TypeCheck();
+
+    // 隐式类型转换
+    Type::ty leftType = addexp->attribute.T.type;
+    Type::ty rightType = mulexp->attribute.T.type;
+
+    // bool 转 int
+    if (leftType == Type::BOOL) {
+        addexp->attribute.T.type = Type::INT;
+    }
+    if (rightType == Type::BOOL) {
+        mulexp->attribute.T.type = Type::INT;
+    }
+
+    // int 转 float
+    if (addexp->attribute.T.type == Type::INT && mulexp->attribute.T.type == Type::FLOAT) {
+        addexp->attribute.T.type = Type::FLOAT;
+    }
+    if (addexp->attribute.T.type == Type::FLOAT && mulexp->attribute.T.type == Type::INT) {
+        mulexp->attribute.T.type = Type::FLOAT;
+    }
 
     // 检查运算数类型是否为void
     if (addexp->attribute.T.type == Type::VOID || mulexp->attribute.T.type == Type::VOID) {
@@ -113,6 +153,26 @@ void MulExp_mul::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
 
+    // 隐式类型转换
+    Type::ty leftType = mulexp->attribute.T.type;
+    Type::ty rightType = unary_exp->attribute.T.type;
+
+    // bool 转 int
+    if (leftType == Type::BOOL) {
+        mulexp->attribute.T.type = Type::INT;
+    }
+    if (rightType == Type::BOOL) {
+        unary_exp->attribute.T.type = Type::INT;
+    }
+
+    // int 转 float
+    if (mulexp->attribute.T.type == Type::INT && unary_exp->attribute.T.type == Type::FLOAT) {
+        mulexp->attribute.T.type = Type::FLOAT;
+    }
+    if (mulexp->attribute.T.type == Type::FLOAT && unary_exp->attribute.T.type == Type::INT) {
+        unary_exp->attribute.T.type = Type::FLOAT;
+    }
+
     // 检查运算数类型是否为void
     if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
         error_msgs.push_back("Multiplication error on void type at line " + std::to_string(line_number) + "\n");
@@ -136,13 +196,32 @@ void MulExp_mul::TypeCheck() {
                                      * (unary_exp->attribute.T.type == Type::INT ? unary_exp->attribute.V.val.IntVal : unary_exp->attribute.V.val.FloatVal);
         }
     }
-
     //TODO("BinaryExp Semant");
 }
 
 void MulExp_div::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
+
+    // 隐式类型转换
+    Type::ty leftType = mulexp->attribute.T.type;
+    Type::ty rightType = unary_exp->attribute.T.type;
+
+    // bool 转 int
+    if (leftType == Type::BOOL) {
+        mulexp->attribute.T.type = Type::INT;
+    }
+    if (rightType == Type::BOOL) {
+        unary_exp->attribute.T.type = Type::INT;
+    }
+
+    // int 转 float
+    if (mulexp->attribute.T.type == Type::INT && unary_exp->attribute.T.type == Type::FLOAT) {
+        mulexp->attribute.T.type = Type::FLOAT;
+    }
+    if (mulexp->attribute.T.type == Type::FLOAT && unary_exp->attribute.T.type == Type::INT) {
+        unary_exp->attribute.T.type = Type::FLOAT;
+    }
 
     // 检查运算数类型是否为void
     if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
@@ -183,6 +262,18 @@ void MulExp_div::TypeCheck() {
 void MulExp_mod::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
+
+    // 隐式类型转换
+    Type::ty leftType = mulexp->attribute.T.type;
+    Type::ty rightType = unary_exp->attribute.T.type;
+
+    // bool 转 int
+    if (leftType == Type::BOOL) {
+        mulexp->attribute.T.type = Type::INT;
+    }
+    if (rightType == Type::BOOL) {
+        unary_exp->attribute.T.type = Type::INT;
+    }
 
     // 检查运算数类型是否为void或float（模运算不支持float）
     if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
@@ -813,6 +904,15 @@ void Func_call::TypeCheck() {
 
         auto expected_type = func_def->formals->at(i)->type_decl; // 获取形参的类型
         auto actual_type = (*func_r_params->params)[i]->attribute.T;
+
+        // 隐式类型转换
+        if (actual_type.type == Type::BOOL && expected_type == Type::INT) {
+            actual_type.type = Type::INT;
+        } else if (actual_type.type == Type::INT && expected_type == Type::FLOAT) {
+            actual_type.type = Type::FLOAT;
+        } else if (actual_type.type == Type::BOOL && expected_type == Type::FLOAT) {
+            actual_type.type = Type::FLOAT;
+        }
 
         // 检查实参类型是否与形参类型一致
         if (actual_type.type != expected_type) {
