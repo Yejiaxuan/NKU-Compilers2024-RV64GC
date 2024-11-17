@@ -17,7 +17,7 @@ std::map<int, int> FormalArrayTable;
 std::map<FuncDefInstruction, int> max_label_map{};
 std::map<FuncDefInstruction, int> max_reg_map{};
 int max_reg = -1;
-int max_label = -1;
+int label_count = -1;
 void AddLibFunctionDeclare();
 
 BasicInstruction::LLVMType Type2LLVM(Type::ty type) {
@@ -178,7 +178,7 @@ void __Program::codeIR() {
 
 void Exp::codeIR() { addexp->codeIR(); }
 
-void GenerateBinaryOperation(tree_node* left, tree_node* right, NodeAttribute::opcode op, LLVMBlock B) {
+void GenerateBinaryOperation(tree_node* current_node, tree_node* left, tree_node* right, NodeAttribute::opcode op, LLVMBlock B) {
     left->codeIR();
     int reg1 = irgen_table.register_counter;
     right->codeIR();
@@ -224,38 +224,38 @@ void GenerateBinaryOperation(tree_node* left, tree_node* right, NodeAttribute::o
     if (type1 == Type::INT && type2 == Type::BOOL){
         IRgenZextI1toI32(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
-        type2 = Type::INT; // 更新类型
+        type2 = Type::INT;
     } else if (type1 == Type::INT && type2 == Type::FLOAT) {
         IRgenSitofp(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
-        type1 = Type::FLOAT; // 更新类型
+        type1 = Type::FLOAT;
     } else if (type1 == Type::FLOAT && type2 == Type::BOOL) {
         IRgenZextI1toI32(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
         IRgenSitofp(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
-        type2 = Type::FLOAT; // 更新类型
+        type2 = Type::FLOAT;
     } else if (type1 == Type::FLOAT && type2 == Type::INT) {
         IRgenSitofp(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
-        type2 = Type::FLOAT; // 更新类型
+        type2 = Type::FLOAT;
     } else if (type1 == Type::BOOL && type2 == Type::BOOL) {
         IRgenZextI1toI32(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
+        type1 = Type::INT;
         IRgenZextI1toI32(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
-        type1 = Type::INT; // 更新类型
-        type2 = Type::INT; // 更新类型
+        type2 = Type::INT;
     } else if (type1 == Type::BOOL && type2 == Type::INT) {
         IRgenZextI1toI32(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
-        type1 = Type::INT; // 更新类型
+        type1 = Type::INT;
     } else if (type1 == Type::BOOL && type2 == Type::FLOAT) {
         IRgenZextI1toI32(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
         IRgenSitofp(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
-        type1 = Type::FLOAT; // 更新类型
+        type1 = Type::FLOAT;
     } 
 
     // 判断操作符是否为关系运算
@@ -263,8 +263,10 @@ void GenerateBinaryOperation(tree_node* left, tree_node* right, NodeAttribute::o
         // 关系运算符
         if (type1 == Type::INT && type2 == Type::INT) {
             IRgenIcmp(B, int_cmp_ops.at(op), reg1, reg2, ++irgen_table.register_counter);
+            current_node->attribute.T.type = Type::BOOL;  // 关系运算结果为布尔类型
         } else if (type1 == Type::FLOAT && type2 == Type::FLOAT) {
             IRgenFcmp(B, float_cmp_ops.at(op), reg1, reg2, ++irgen_table.register_counter);
+            current_node->attribute.T.type = Type::BOOL;
         } else {
             assert(false && "Unsupported type combination for relational operation");
         }
@@ -272,8 +274,10 @@ void GenerateBinaryOperation(tree_node* left, tree_node* right, NodeAttribute::o
         // 算术运算符
         if (type1 == Type::INT && type2 == Type::INT) {
             IRgenArithmeticI32(B, int_ops.at(op), reg1, reg2, ++irgen_table.register_counter);
+            current_node->attribute.T.type = Type::INT;
         } else if (type1 == Type::FLOAT && type2 == Type::FLOAT) {
             IRgenArithmeticF32(B, float_ops.at(op), reg1, reg2, ++irgen_table.register_counter);
+            current_node->attribute.T.type = Type::FLOAT;
         } else {
             assert(false && "Unsupported type combination for arithmetic operation");
         }
@@ -281,107 +285,74 @@ void GenerateBinaryOperation(tree_node* left, tree_node* right, NodeAttribute::o
         // 不支持的操作符
         assert(false && "Unsupported operation");
     }
+
+    // 更新当前节点的结果寄存器
+    current_node->attribute.result_reg = irgen_table.register_counter;
 }
 
 void AddExp_plus::codeIR() {
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(addexp, mulexp, NodeAttribute::ADD, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;
-    /*this->attribute.T = (addexp->attribute.T.type == Type::FLOAT || mulexp->attribute.T.type == Type::FLOAT) 
-                        ? Type(Type::FLOAT) 
-                        : Type(Type::INT);  // 选择最终类型*/
+    GenerateBinaryOperation(this, addexp, mulexp, NodeAttribute::ADD, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void AddExp_sub::codeIR() { 
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(addexp, mulexp, NodeAttribute::SUB, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;
+    GenerateBinaryOperation(this, addexp, mulexp, NodeAttribute::SUB, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void MulExp_mul::codeIR() {
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(mulexp, unary_exp, NodeAttribute::MUL, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter; 
+    GenerateBinaryOperation(this, mulexp, unary_exp, NodeAttribute::MUL, B);
     //TODO("BinaryExp CodeIR");
 }
 
 void MulExp_div::codeIR() {
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(mulexp, unary_exp, NodeAttribute::DIV, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;  
+    GenerateBinaryOperation(this, mulexp, unary_exp, NodeAttribute::DIV, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void MulExp_mod::codeIR() { 
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(mulexp, unary_exp, NodeAttribute::MOD, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;  
+    GenerateBinaryOperation(this, mulexp, unary_exp, NodeAttribute::MOD, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void RelExp_leq::codeIR() { 
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(relexp, addexp, NodeAttribute::LEQ, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;  
+    GenerateBinaryOperation(this, relexp, addexp, NodeAttribute::LEQ, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void RelExp_lt::codeIR() {
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(relexp, addexp, NodeAttribute::LT, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;   
+    GenerateBinaryOperation(this, relexp, addexp, NodeAttribute::LT, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void RelExp_geq::codeIR() { 
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(relexp, addexp, NodeAttribute::GEQ, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;   
+    GenerateBinaryOperation(this, relexp, addexp, NodeAttribute::GEQ, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void RelExp_gt::codeIR() {
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(relexp, addexp, NodeAttribute::GT, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;    
+    GenerateBinaryOperation(this, relexp, addexp, NodeAttribute::GT, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void EqExp_eq::codeIR() { 
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(eqexp, relexp, NodeAttribute::EQ, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;
+    GenerateBinaryOperation(this, eqexp, relexp, NodeAttribute::EQ, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
 void EqExp_neq::codeIR() { 
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
-    GenerateBinaryOperation(eqexp, relexp, NodeAttribute::NEQ, B);
-
-    // 设置当前节点的结果寄存器
-    this->attribute.result_reg = irgen_table.register_counter;   
+    GenerateBinaryOperation(this, eqexp, relexp, NodeAttribute::NEQ, B);
     //TODO("BinaryExp CodeIR"); 
 }
 
@@ -391,29 +362,37 @@ void LAndExp_and::codeIR() {
     LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
 
     // 创建新标签
-    int true_label = llvmIR.NewBlock(this_function, ++function_label)->block_id;
-    int end_label = llvmIR.NewBlock(this_function, ++function_label)->block_id;
-
+    int left_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
     // 生成左操作数的代码
+    landexp->true_label = left_label;
+    landexp->false_label = this->false_label;
     landexp->codeIR();
+
     IRgenTypeConverse(current_block, landexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
     // 如果左操作数为 false，跳转到结束块（短路逻辑）
-    IRgenBrCond(current_block, irgen_table.register_counter, true_label, end_label);
+    IRgenBrCond(current_block, irgen_table.register_counter, left_label, this->false_label);
 
     // 处理 true_label，生成右操作数的代码
-    function_label = true_label;
+    function_label = left_label;
     LLVMBlock true_block = llvmIR.GetBlock(this_function, true_label);
+    eqexp->true_label = this->true_label;
+    eqexp->false_label = this->false_label;
     eqexp->codeIR();
     IRgenTypeConverse(true_block, eqexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
-    // 跳转到结束块
+    /*// 跳转到结束块
     IRgenBRUnCond(true_block, end_label);
 
     // 处理结束块，将最终结果保存在 attribute.result_reg
     function_label = end_label;
     LLVMBlock end_block = llvmIR.GetBlock(this_function, end_label);
     attribute.result_reg = irgen_table.register_counter;
+    //this->attribute.result_reg = final_result;
+    this->attribute.T.type = Type::BOOL;*/
+    // 设置最终结果
+    this->attribute.result_reg = eqexp->attribute.result_reg;
+    this->attribute.T.type = Type::BOOL;
     // TODO("LAndExpAnd CodeIR");
 }
 
@@ -423,29 +402,37 @@ void LOrExp_or::codeIR() {
     LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
 
     // 创建新标签
-    int false_label = llvmIR.NewBlock(this_function, ++function_label)->block_id;
-    int end_label = llvmIR.NewBlock(this_function, ++function_label)->block_id;
+    int left_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
 
     // 生成左操作数的代码
+    lorexp->true_label = this->true_label;
+    lorexp->false_label = left_label;
     lorexp->codeIR();
     IRgenTypeConverse(current_block, lorexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
     // 如果左操作数为 true，跳转到结束块（短路逻辑）
-    IRgenBrCond(current_block, irgen_table.register_counter, end_label, false_label);
+    IRgenBrCond(current_block, irgen_table.register_counter, this->true_label, left_label);
 
     // 处理 false_label，生成右操作数的代码
-    function_label = false_label;
-    LLVMBlock false_block = llvmIR.GetBlock(this_function, false_label);
+    function_label = left_label;
+    LLVMBlock false_block = llvmIR.GetBlock(this_function, function_label);
+    landexp->true_label = this->true_label;
+    landexp->false_label = this->false_label;
     landexp->codeIR();
     IRgenTypeConverse(false_block, landexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
-    // 跳转到结束块
+    /*// 跳转到结束块
     IRgenBRUnCond(false_block, end_label);
 
     // 处理结束块，将最终结果保存在 attribute.result_reg
     function_label = end_label;
     LLVMBlock end_block = llvmIR.GetBlock(this_function, end_label);
     attribute.result_reg = irgen_table.register_counter;
+    //this->attribute.result_reg = final_result;
+    this->attribute.T.type = Type::BOOL;*/
+    // 设置最终结果
+    this->attribute.result_reg = landexp->attribute.result_reg;
+    this->attribute.T.type = Type::BOOL;
     // TODO("LOrExpOr CodeIR");
 }
 
@@ -643,21 +630,21 @@ void GenerateUnaryOperation(tree_node* current_node, tree_node* operand, NodeAtt
 
 void UnaryExp_plus::codeIR() {
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
-    GenerateUnaryOperation(this,unary_exp, NodeAttribute::ADD, block);
+    GenerateUnaryOperation(this, unary_exp, NodeAttribute::ADD, block);
     this->attribute.result_reg = irgen_table.register_counter;
     // TODO("UnaryExpPlus CodeIR");
 }
 
 void UnaryExp_neg::codeIR() {
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
-    GenerateUnaryOperation(this,unary_exp, NodeAttribute::SUB, block);
+    GenerateUnaryOperation(this, unary_exp, NodeAttribute::SUB, block);
     this->attribute.result_reg = irgen_table.register_counter;
     // TODO("UnaryExpNeg CodeIR");
 }
 
 void UnaryExp_not::codeIR() {
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
-    GenerateUnaryOperation(this,unary_exp, NodeAttribute::NOT, block);
+    GenerateUnaryOperation(this, unary_exp, NodeAttribute::NOT, block);
     this->attribute.result_reg = irgen_table.register_counter;
     // TODO("UnaryExpNot CodeIR");
 }
@@ -706,9 +693,9 @@ void block_stmt::codeIR() {
 }
 
 void ifelse_stmt::codeIR() {
-    int ifLabel = llvmIR.NewBlock(this_function, ++max_label)->block_id;
-    int elseLabel = llvmIR.NewBlock(this_function, ++max_label)->block_id;
-    int endLabel = llvmIR.NewBlock(this_function, ++max_label)->block_id;
+    int ifLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    int elseLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
 
     Cond->true_label = ifLabel;
     Cond->false_label = elseLabel;
@@ -732,8 +719,8 @@ void ifelse_stmt::codeIR() {
 }
 
 void if_stmt::codeIR() {
-    int ifLabel = llvmIR.NewBlock(this_function, ++max_label)->block_id;
-    int endLabel = llvmIR.NewBlock(this_function, ++max_label)->block_id;
+    int ifLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
 
     Cond->true_label = ifLabel;
     Cond->false_label = endLabel;
@@ -752,9 +739,9 @@ void if_stmt::codeIR() {
 }
 
 void while_stmt::codeIR() {
-    int judgeLabel = llvmIR.NewBlock(this_function, ++max_label)->block_id;
-    int bodyLabel = llvmIR.NewBlock(this_function, ++max_label)->block_id;
-    int endLabel = llvmIR.NewBlock(this_function, ++max_label)->block_id;
+    int judgeLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    int bodyLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
 
     int tempStartLabel = irgen_table.loop_start_label;
     int tempEndLabel = irgen_table.loop_end_label;
@@ -787,14 +774,14 @@ void while_stmt::codeIR() {
 void continue_stmt::codeIR() {
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
     IRgenBRUnCond(block, irgen_table.loop_start_label);
-    function_label = llvmIR.NewBlock(this_function, ++max_label)->block_id;
+    function_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
     // TODO("ContinueStmt CodeIR");
 }
 
 void break_stmt::codeIR() {
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
     IRgenBRUnCond(block, irgen_table.loop_end_label);
-    function_label = llvmIR.NewBlock(this_function, ++max_label)->block_id;
+    function_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
     // TODO("BreakStmt CodeIR");
 }
 
@@ -989,13 +976,12 @@ void __FuncDef::codeIR() {
     RegTable.clear();
     FormalArrayTable.clear();
     function_label = 0;
-    max_label = -1;
     this_function = function_instruction;
     irgen_table.function_returntype = return_type;
 
     // 新建函数并创建入口块
     llvmIR.NewFunction(this_function);
-    LLVMBlock B = llvmIR.NewBlock(this_function, ++max_label);
+    LLVMBlock B = llvmIR.NewBlock(this_function, ++label_count);
 
     /*auto formal_vector = *formals;
     irgen_table.register_counter = formal_vector.size() - 1;
@@ -1029,8 +1015,8 @@ void __FuncDef::codeIR() {
     IRgenBRUnCond(B, 1);
 
     // 新建函数体块并生成代码
-    B = llvmIR.NewBlock(this_function, ++max_label);
-    function_label = max_label;
+    B = llvmIR.NewBlock(this_function, ++label_count);
+    function_label = label_count;
     block->codeIR();
 
     // 处理无返回值情况
@@ -1055,7 +1041,7 @@ void __FuncDef::codeIR() {
     }
     // 更新最大寄存器号和标签号
     max_reg_map[function_instruction] = irgen_table.register_counter;
-    max_label_map[function_instruction] = max_label;
+    max_label_map[function_instruction] = label_count;
 
     // 退出符号表作用域
     irgen_table.symbol_table.exit_scope();
@@ -1146,3 +1132,5 @@ void AddLibFunctionDeclare() {
     llvm_smin->InsertFormal(BasicInstruction::I32);
     llvmIR.function_declare.push_back(llvm_smin);
 }
+
+
