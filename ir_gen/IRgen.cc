@@ -567,78 +567,89 @@ void Func_call::codeIR() {
     // TODO("FunctionCall CodeIR");
 }
 
-void GenerateUnaryOperation(tree_node* operand, NodeAttribute::opcode op, LLVMBlock B) {
-    // 生成操作数的代码
+void GenerateUnaryOperation(tree_node* current_node, tree_node* operand, NodeAttribute::opcode op, LLVMBlock B) {
+    // 生成操作数的中间代码
     operand->codeIR();
-    int reg = irgen_table.register_counter; // 获取操作数所在寄存器号
+    int reg = irgen_table.register_counter; // 操作数所在的寄存器
 
     Type::ty type = operand->attribute.T.type;
 
-    // 定义操作码和类型的映射表
-    std::map<NodeAttribute::opcode, BasicInstruction::LLVMIROpcode> int_ops = {
-        {NodeAttribute::ADD, BasicInstruction::ADD},  // 单目加，相当于直接返回
-        {NodeAttribute::SUB, BasicInstruction::SUB},  // 取负
-    };
-
-    std::map<NodeAttribute::opcode, BasicInstruction::LLVMIROpcode> float_ops = {
-        {NodeAttribute::ADD, BasicInstruction::FADD}, // 单目加
-        {NodeAttribute::SUB, BasicInstruction::FSUB}  // 取负
-    };
-
-    // 布尔类型转换成int
-    if (type == Type::BOOL) {
+    // 如果是布尔值，且是加减运算，需要扩展为整型
+    if (type == Type::BOOL && (op == NodeAttribute::ADD || op == NodeAttribute::SUB)) {
         IRgenZextI1toI32(B, reg, ++irgen_table.register_counter);
         reg = irgen_table.register_counter;
+        type = Type::INT;  // 更新类型为整型
     }
 
-    // 单目操作符处理逻辑
     if (op == NodeAttribute::ADD) {
+        // 单目加号不做任何操作
+        current_node->attribute.result_reg = reg;
+        current_node->attribute.T.type = type;
         return;
     } else if (op == NodeAttribute::SUB) {
-        if (type == Type::INT || type == Type::BOOL) {
-            // 整数类型的取负操作：0 - reg
-            IRgenArithmeticI32ImmLeft(B, int_ops.at(op), 0, reg, ++irgen_table.register_counter);
+        // 处理单目减号
+        if (type == Type::INT) {
+            // 整型取负操作：0 - reg
+            IRgenArithmeticI32ImmLeft(B, BasicInstruction::SUB, 0, reg, ++irgen_table.register_counter);
+            current_node->attribute.result_reg = irgen_table.register_counter;
+            current_node->attribute.T.type = Type::INT;
         } else if (type == Type::FLOAT) {
-            // 浮点类型的取负操作：0.0 - reg
-            IRgenArithmeticF32ImmLeft(B, float_ops.at(op), 0.0f, reg, ++irgen_table.register_counter);
+            // 浮点数取负操作：0.0 - reg
+            IRgenArithmeticF32ImmLeft(B, BasicInstruction::FSUB, 0.0f, reg, ++irgen_table.register_counter);
+            current_node->attribute.result_reg = irgen_table.register_counter;
+            current_node->attribute.T.type = Type::FLOAT;
         } else {
             assert(false && "Unsupported type for SUB operation");
         }
         return;
     } else if (op == NodeAttribute::NOT) {
-        if (type == Type::INT || type == Type::BOOL) {
-            // 对整数或布尔类型生成与 0 的比较：reg == 0
+        // 处理逻辑非操作
+        if (type == Type::BOOL) {
+            // 对布尔值执行非运算：先将 i1 扩展为 i32
+            IRgenZextI1toI32(B, reg, ++irgen_table.register_counter);
+            reg = irgen_table.register_counter;
+            // 然后执行比较操作
             IRgenIcmpImmRight(B, BasicInstruction::IcmpCond::eq, reg, 0, ++irgen_table.register_counter);
+            current_node->attribute.result_reg = irgen_table.register_counter;
+            current_node->attribute.T.type = Type::BOOL;
+        } else if (type == Type::INT) {
+            // 对整型执行非运算：reg == 0
+            IRgenIcmpImmRight(B, BasicInstruction::IcmpCond::eq, reg, 0, ++irgen_table.register_counter);
+            current_node->attribute.result_reg = irgen_table.register_counter;
+            current_node->attribute.T.type = Type::BOOL;
         } else if (type == Type::FLOAT) {
-            // 对浮点数生成与 0.0 的比较：reg == 0.0
+            // 对浮点数执行非运算：reg == 0.0
             IRgenFcmpImmRight(B, BasicInstruction::FcmpCond::OEQ, reg, 0.0f, ++irgen_table.register_counter);
+            current_node->attribute.result_reg = irgen_table.register_counter;
+            current_node->attribute.T.type = Type::BOOL;
         } else {
             assert(false && "Unsupported type for NOT operation");
         }
         return;
     }
 
-    // 如果操作符不在支持范围内，则抛出错误
+    // 如果遇到不支持的操作符，抛出错误
     assert(false && "Unsupported unary operation");
 }
 
+
 void UnaryExp_plus::codeIR() {
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
-    GenerateUnaryOperation(unary_exp, NodeAttribute::ADD, block);
+    GenerateUnaryOperation(this,unary_exp, NodeAttribute::ADD, block);
     this->attribute.result_reg = irgen_table.register_counter;
     // TODO("UnaryExpPlus CodeIR");
 }
 
 void UnaryExp_neg::codeIR() {
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
-    GenerateUnaryOperation(unary_exp, NodeAttribute::SUB, block);
+    GenerateUnaryOperation(this,unary_exp, NodeAttribute::SUB, block);
     this->attribute.result_reg = irgen_table.register_counter;
     // TODO("UnaryExpNeg CodeIR");
 }
 
 void UnaryExp_not::codeIR() {
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
-    GenerateUnaryOperation(unary_exp, NodeAttribute::NOT, block);
+    GenerateUnaryOperation(this,unary_exp, NodeAttribute::NOT, block);
     this->attribute.result_reg = irgen_table.register_counter;
     // TODO("UnaryExpNot CodeIR");
 }
