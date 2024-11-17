@@ -224,30 +224,38 @@ void GenerateBinaryOperation(tree_node* left, tree_node* right, NodeAttribute::o
     if (type1 == Type::INT && type2 == Type::BOOL){
         IRgenZextI1toI32(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
+        type2 = Type::INT; // 更新类型
     } else if (type1 == Type::INT && type2 == Type::FLOAT) {
         IRgenSitofp(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
+        type1 = Type::FLOAT; // 更新类型
     } else if (type1 == Type::FLOAT && type2 == Type::BOOL) {
         IRgenZextI1toI32(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
         IRgenSitofp(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
+        type2 = Type::FLOAT; // 更新类型
     } else if (type1 == Type::FLOAT && type2 == Type::INT) {
         IRgenSitofp(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
+        type2 = Type::FLOAT; // 更新类型
     } else if (type1 == Type::BOOL && type2 == Type::BOOL) {
         IRgenZextI1toI32(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
         IRgenZextI1toI32(B, reg2, ++irgen_table.register_counter);
         reg2 = irgen_table.register_counter;
+        type1 = Type::INT; // 更新类型
+        type2 = Type::INT; // 更新类型
     } else if (type1 == Type::BOOL && type2 == Type::INT) {
         IRgenZextI1toI32(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
+        type1 = Type::INT; // 更新类型
     } else if (type1 == Type::BOOL && type2 == Type::FLOAT) {
         IRgenZextI1toI32(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
         IRgenSitofp(B, reg1, ++irgen_table.register_counter);
         reg1 = irgen_table.register_counter;
+        type1 = Type::FLOAT; // 更新类型
     } 
 
     // 判断操作符是否为关系运算
