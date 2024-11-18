@@ -474,7 +474,28 @@ void Lval::codeIR() {
 }
 
 void FuncRParams::codeIR() {
+    args.clear(); // 清空之前的参数列表
 
+    if (params == nullptr || params->empty()) {
+        return; // 如果没有参数，直接返回
+    }
+
+    for (auto param : *params) {
+        param->codeIR();  // 为每个参数生成中间代码
+
+        // 获取参数类型和值
+        Type::ty param_type = param->attribute.T.type;
+
+        // 如果参数是 FLOAT 类型，转换为 DOUBLE
+        if (param_type == Type::FLOAT) {
+            IRgenTypeConverse(llvmIR.GetBlock(this_function, function_label), param_type, Type::DOUBLE,
+                              irgen_table.register_counter);
+            param_type = Type::DOUBLE;
+        }
+
+        // 将参数类型和值追加到成员变量 args 中
+        args.emplace_back(Type2LLVM(param_type), GetNewRegOperand(irgen_table.register_counter));
+    }
     // TODO("FuncRParams CodeIR");
 }
 
@@ -483,26 +504,29 @@ void Func_call::codeIR() {
 
     // 检查是否调用的是 `putf` 函数
     if (name->get_string() == "putf") {
-        auto params = ((FuncRParams *)funcr_params)->params;
         std::vector<std::pair<BasicInstruction::LLVMType, Operand>> args;
 
-        // 第一个参数是字符串指针
-        auto str_param = (*params)[0];
-        str_param->codeIR();
-        args.emplace_back(BasicInstruction::PTR, irgen_table.string_operand);
+        // 特殊处理第一个参数（字符串指针）
+        if (funcr_params != nullptr) {
+            auto func_params = dynamic_cast<FuncRParams*>(funcr_params);
+            if (func_params != nullptr && func_params->params != nullptr && !func_params->params->empty()) {
+                auto str_param = (*func_params->params)[0];
+                str_param->codeIR();
+                args.emplace_back(BasicInstruction::PTR, irgen_table.string_operand);
 
-        // 从第二个参数开始处理数值类型的参数
-        for (size_t i = 1; i < params->size(); ++i) {
-            auto param = (*params)[i];
-            param->codeIR();
+                // 从第二个参数开始处理
+                for (size_t i = 1; i < func_params->params->size(); ++i) {
+                    auto param = (*func_params->params)[i];
+                    param->codeIR();
 
-            Type::ty param_type = param->attribute.T.type;
-            if (param_type == Type::FLOAT) {
-                // `putf` 需要 DOUBLE 类型的参数，将 FLOAT 转换为 DOUBLE
-                IRgenTypeConverse(block, param_type, Type::DOUBLE, irgen_table.register_counter);
-                param_type = Type::DOUBLE;
+                    Type::ty param_type = param->attribute.T.type;
+                    if (param_type == Type::FLOAT) {
+                        IRgenTypeConverse(block, param_type, Type::DOUBLE, irgen_table.register_counter);
+                        param_type = Type::DOUBLE;
+                    }
+                    args.emplace_back(Type2LLVM(param_type), GetNewRegOperand(irgen_table.register_counter));
+                }
             }
-            args.emplace_back(Type2LLVM(param_type), GetNewRegOperand(irgen_table.register_counter));
         }
 
         // 生成 `putf` 函数的调用
@@ -510,41 +534,22 @@ void Func_call::codeIR() {
         return;
     }
 
-    // 获取函数的返回类型
+    // 普通函数调用
     Type::ty return_type = semant_table.FunctionTable[name]->return_type;
     BasicInstruction::LLVMType llvm_ret_type = Type2LLVM(return_type);
 
-    // 处理函数参数
-    std::vector<std::pair<enum BasicInstruction::LLVMType, Operand>> args;
-    if (funcr_params != nullptr) {
-         auto params = ((FuncRParams *)funcr_params)->params;
-        for (auto param : *params) {
-             param->codeIR();
-             // 获取参数的类型和值
-            Type::ty param_type = param->attribute.T.type;
-             args.emplace_back(Type2LLVM(param_type), 
-                                GetNewRegOperand(irgen_table.register_counter));
-         }
-     }
+    std::vector<std::pair<BasicInstruction::LLVMType, Operand>> args;
 
-     // 生成函数调用指令
-    if (return_type == Type::VOID) {
-         if (args.empty()) {
-               IRgenCallVoidNoArgs(block, llvm_ret_type, name->get_string());
-         } else {
-              IRgenCallVoid(block, llvm_ret_type, args, name->get_string());
-         }
-     } else {
-         if (args.empty()) {
-              IRgenCallNoArgs(block, llvm_ret_type, ++irgen_table.register_counter, name->get_string());
-         } else {
-               IRgenCall(block, llvm_ret_type, ++irgen_table.register_counter, args, name->get_string());
-         }
-         this->attribute.result_reg = irgen_table.register_counter;
-         this->attribute.T.type = return_type;
+    // 检查并生成参数的中间代码
+    if (funcr_params != nullptr) {
+        auto func_params = dynamic_cast<FuncRParams*>(funcr_params);
+        if (func_params != nullptr) {
+            func_params->codeIR();
+            args = func_params->args; // 直接使用 `FuncRParams` 的成员变量
+        }
     }
 
-    /*// 根据返回类型生成不同的调用指令
+    // 根据返回类型生成调用指令
     if (return_type == Type::VOID) {
         if (args.empty()) {
             IRgenCallVoidNoArgs(block, llvm_ret_type, name->get_string());
@@ -557,10 +562,12 @@ void Func_call::codeIR() {
         } else {
             IRgenCall(block, llvm_ret_type, ++irgen_table.register_counter, args, name->get_string());
         }
-        // 设置当前节点的结果寄存器
+
+        // 更新当前节点的返回值信息
         this->attribute.result_reg = irgen_table.register_counter;
         this->attribute.T.type = return_type;
-    }*/
+    }
+
     // TODO("FunctionCall CodeIR");
 }
 
@@ -963,7 +970,46 @@ void __Block::codeIR() {
 }
 
 void __FuncFParam::codeIR() {
+    // 获取当前函数入口基本块
+    LLVMBlock entry_block = llvmIR.GetBlock(this_function, 0);
 
+    // 定义形式参数的属性
+    VarAttribute param_attr;
+    param_attr.type = this->type_decl;
+
+    // 获取形式参数的 LLVM 类型
+    BasicInstruction::LLVMType llvm_type = Type2LLVM(this->type_decl);
+
+    // 判断是否是数组
+    if (this->dims != nullptr) {
+        // 数组参数处理
+        this_function->InsertFormal(AllocaInstruction::LLVMType::PTR);
+
+        // 保存数组的维度信息
+        for (size_t i = 1; i < this->dims->size(); ++i) {
+            param_attr.dims.push_back(this->dims->at(i)->attribute.V.val.IntVal);
+        }
+
+        // 更新符号表和数组表
+        int index = irgen_table.register_counter + 1;  // 当前参数索引
+        FormalArrayTable[index] = 1;
+        irgen_table.symbol_table.add_Symbol(this->name, index);
+        RegTable[index] = param_attr;
+    } else {
+        // 普通变量参数处理
+        this_function->InsertFormal(llvm_type);
+
+        // 分配寄存器并分配内存
+        int param_reg = ++irgen_table.register_counter;
+        IRgenAlloca(entry_block, llvm_type, param_reg);
+
+        // 将参数值存储到寄存器
+        IRgenStore(entry_block, llvm_type, GetNewRegOperand(param_reg - 1), GetNewRegOperand(param_reg));
+
+        // 更新符号表和寄存器表
+        irgen_table.symbol_table.add_Symbol(this->name, param_reg);
+        RegTable[param_reg] = param_attr;
+    }
     // TODO("FunctionFParam CodeIR");
 }
 
@@ -985,41 +1031,20 @@ void __FuncDef::codeIR() {
 
     // 新建函数并创建入口块
     llvmIR.NewFunction(this_function);
-    LLVMBlock B = llvmIR.NewBlock(this_function, ++label_count);
+    LLVMBlock entry_block = llvmIR.NewBlock(this_function, ++label_count);
 
-    /*auto formal_vector = *formals;
+    // 处理参数
+    auto formal_vector = *formals;
     irgen_table.register_counter = formal_vector.size() - 1;
-    for (int i = 0; i < formal_vector.size(); ++i) {
-        auto formal = formal_vector[i];
-        VarAttribute val;
-        val.type = formal->type_decl;
-        BasicInstruction::LLVMType lltype = Type2LLVM(return_type);
-        if (formal->dims != nullptr) {    // formal is array
-            // in SysY, we can assume that we can not modify the array address, so we do not need alloca
-            function_instruction->InsertFormal(AllocaInstruction::LLVMType::PTR);
+    for (auto formal_param : formal_vector) {
+        formal_param->codeIR();
+    }
 
-            for (int i = 1; i < formal->dims->size(); ++i) {    // in IRgen, we ignore the first dim of the
-                                                                // formal
-                auto d = formal->dims->at(i);
-                val.dims.push_back(d->attribute.V.val.IntVal);
-            }
-
-            FormalArrayTable[i] = 1;
-            irgen_table.symbol_table.add_Symbol(formal->name, i);
-            RegTable[i] = val;
-        } else {    // formal is not array
-            function_instruction->InsertFormal(lltype);
-            IRgenAlloca(entry_block, lltype, ++irgen_table.register_counter);
-            IRgenStore(entry_block, lltype, GetNewRegOperand(i), GetNewRegOperand(irgen_table.register_counter));
-            irgen_table.symbol_table.add_Symbol(formal->name, irgen_table.register_counter);
-            RegTable[irgen_table.register_counter] = val;
-        }
-    }*/
     // 无条件跳转到函数体块
-    IRgenBRUnCond(B, 1);
+    IRgenBRUnCond(entry_block, 1);
 
     // 新建函数体块并生成代码
-    B = llvmIR.NewBlock(this_function, ++label_count);
+    entry_block = llvmIR.NewBlock(this_function, ++label_count);
     function_label = label_count;
     block->codeIR();
 
@@ -1032,7 +1057,6 @@ void __FuncDef::codeIR() {
             (B->Instruction_list.back()->GetOpcode() != AllocaInstruction::RET && 
              B->Instruction_list.back()->GetOpcode() != AllocaInstruction::BR_COND &&
              B->Instruction_list.back()->GetOpcode() != AllocaInstruction::BR_UNCOND)) {
-            
             // 如果没有返回或跳转指令，根据返回类型插入默认返回
             if (return_type == Type::VOID) {
                 IRgenRetVoid(B);
