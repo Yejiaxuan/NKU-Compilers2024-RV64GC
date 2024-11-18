@@ -843,7 +843,8 @@ void VarDef_no_init::codeIR() {
             IRgenArithmeticI32ImmAll(InitB, BasicInstruction::LLVMIROpcode::ADD, 0, 0, ++irgen_table.register_counter);
             value_operand = GetNewRegOperand(irgen_table.register_counter);
         } else if (current_type_decl == Type::FLOAT) {
-            // TODO: 处理浮点数的默认初始化（后续实现）
+            IRgenArithmeticF32ImmAll(InitB, BasicInstruction::FADD, 0.0f, 0.0f, ++irgen_table.register_counter);
+            value_operand = GetNewRegOperand(irgen_table.register_counter);
         }
         IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
     } else {
@@ -877,7 +878,8 @@ void VarDef::codeIR() {
                 IRgenArithmeticI32ImmAll(InitB, BasicInstruction::LLVMIROpcode::ADD, 0, 0, ++irgen_table.register_counter);
                 value_operand = GetNewRegOperand(irgen_table.register_counter);
             } else if (current_type_decl == Type::FLOAT) {
-                // TODO: 处理浮点数的默认初始化（后续实现）
+                IRgenArithmeticF32ImmAll(InitB, BasicInstruction::FADD, 0.0f, 0.0f, ++irgen_table.register_counter); 
+                value_operand = GetNewRegOperand(irgen_table.register_counter);
             }
             IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
         }
