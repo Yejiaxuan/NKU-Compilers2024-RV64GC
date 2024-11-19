@@ -1550,6 +1550,38 @@ void SolveIntInitVal(InitVal init, VarAttribute &val)    // used for global or c
     }
 }
 
+void SolveFloatInitVal(InitVal init, VarAttribute &val)    // used for global or const
+{
+    val.type = Type::FLOAT;
+    int arraySz = 1;
+    for (auto d : val.dims) {
+        arraySz *= d;
+    }
+    val.FloatInitVals.resize(arraySz, 0);
+    if (val.dims.empty()) {
+        if (init->GetExp() != nullptr) {
+            if (init->GetExp()->attribute.T.type == Type::VOID) {
+                error_msgs.push_back("Expression can not be void in initval in line " + std::to_string(init->GetLineNumber()) +
+                                     "\n");
+            } else if (init->GetExp()->attribute.T.type == Type::FLOAT) {
+                val.FloatInitVals[0] = init->GetExp()->attribute.V.val.FloatVal;
+            } else if (init->GetExp()->attribute.T.type == Type::INT) {
+                val.FloatInitVals[0] = init->GetExp()->attribute.V.val.IntVal;
+            }
+        }
+        return;
+    } else {
+        if (init->IsExp()) {
+            if ((init)->GetExp() != nullptr) {
+                error_msgs.push_back("InitVal can not be exp in line " + std::to_string(init->GetLineNumber()) + "\n");
+            }
+            return;
+        } else {
+            RecursiveArrayInit(init, val, 0, arraySz - 1, 0);
+        }
+    }
+}
+
 void CompUnit_Decl::TypeCheck() { 
     Type::ty type_decl = decl->GetTypedecl();
     auto def_vector = *decl->GetDefs();
@@ -1586,7 +1618,7 @@ void CompUnit_Decl::TypeCheck() {
             if (type_decl == Type::INT) {
                 SolveIntInitVal(init, val);
             } else if (type_decl == Type::FLOAT) {
-                // SolveFloatInitVal(init, val);
+                SolveFloatInitVal(init, val);
             }
         }
 
