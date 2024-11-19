@@ -1200,6 +1200,7 @@ void __FuncDef::codeIR() {
     RegTable.clear();
     FormalArrayTable.clear();
     function_label = 0;
+    label_count = -1;
     this_function = function_instruction;
     irgen_table.function_returntype = return_type;
 
