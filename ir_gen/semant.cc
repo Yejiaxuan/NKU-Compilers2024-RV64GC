@@ -1460,157 +1460,195 @@ void __FuncDef::TypeCheck() {
 }
 
 std::map<std::string, VarAttribute> ConstGlobalMap;
-std::map<std::string, VarAttribute> StaticGlobalMap;
+std::map<std::string, VarAttribute> StaticGlobalMap; 
 
-// Type::VOID -> VOID    Type::INT -> I32    Type::FLOAT -> FLOAT32
-BasicInstruction::LLVMType Type2LLvm[6] = {
-    BasicInstruction::LLVMType::VOID,
-    BasicInstruction::LLVMType::I32,
-    BasicInstruction::LLVMType::FLOAT32,
-    BasicInstruction::LLVMType::I1,
-    BasicInstruction::LLVMType::PTR,
-    BasicInstruction::LLVMType::DOUBLE
-};
+// Type::VOID -> VOID    Type::Int -> I32    Type::FLOAT -> FLOAT32
+BasicInstruction::LLVMType Type2LLvm[6] = {BasicInstruction::LLVMType::VOID, BasicInstruction::LLVMType::I32, BasicInstruction::LLVMType::FLOAT32,
+                         BasicInstruction::LLVMType::I1,   BasicInstruction::LLVMType::PTR, BasicInstruction::LLVMType::DOUBLE};
 
-// 使用显式栈来迭代处理数组初始化
-void IterativeArrayInit(InitVal init, VarAttribute &val) {
-    struct StackFrame {
-        InitVal initVal;
-        int pos;
-        int dimsIdx;
-    };
+int FindMinDimStep(const VarAttribute &val, int relativePos, int dimsIdx, int &max_subBlock_sz) {
+    int min_dim_step = 1;
+    int blockSz = 1;
+    for (int i = dimsIdx + 1; i < val.dims.size(); i++) {
+        blockSz *= val.dims[i];
+    }
+    while (relativePos % blockSz != 0) {
+        min_dim_step++;
+        blockSz /= val.dims[dimsIdx + min_dim_step - 1];
+    }
+    max_subBlock_sz = blockSz;
+    return min_dim_step;
+}
 
-    std::stack<StackFrame> stack;
-    stack.push({init, 0, 0});
+void RecursiveArrayInit(InitVal init, VarAttribute &val, int begPos, int endPos, int dimsIdx) {
+    // dimsIdx from 0
+    int pos = begPos;
 
-    while (!stack.empty()) {
-        auto [currentInit, currentPos, currentDimsIdx] = stack.top();
-        stack.pop();
+    // Old Policy: One { } for one dim
 
-        if (currentInit->IsExp()) {
-            if (currentInit->attribute.T.type == Type::VOID) {
-                error_msgs.push_back("Expression cannot be void in initval in line " + std::to_string(currentInit->GetLineNumber()) + "\n");
-            } else {
-                if (val.type == Type::INT) {
-                    val.IntInitVals[currentPos] = (currentInit->attribute.T.type == Type::INT)
-                        ? currentInit->attribute.V.val.IntVal
-                        : static_cast<int>(currentInit->attribute.V.val.FloatVal);
-                } else if (val.type == Type::FLOAT) {
-                    val.FloatInitVals[currentPos] = (currentInit->attribute.T.type == Type::FLOAT)
-                        ? currentInit->attribute.V.val.FloatVal
-                        : static_cast<float>(currentInit->attribute.V.val.IntVal);
+    for (InitVal iv : *(init->GetList())) {
+        if (iv->IsExp()) {
+            if (iv->attribute.T.type == Type::VOID) {
+                error_msgs.push_back("exp can not be void in initval in line " + std::to_string(init->GetLineNumber()) +
+                                     "\n");
+            }
+            if (val.type == Type::INT) {
+                if (iv->attribute.T.type == Type::INT) {
+                    val.IntInitVals[pos] = iv->attribute.V.val.IntVal;
+                } else if (iv->attribute.T.type == Type::FLOAT) {
+                    val.IntInitVals[pos] = iv->attribute.V.val.FloatVal;
                 }
             }
-        } else {
-            auto initList = currentInit->GetList();
-            int subPos = currentPos;
-            int subDimsIdx = currentDimsIdx + 1;
-
-            for (auto it = initList->rbegin(); it != initList->rend(); ++it) {
-                stack.push({*it, subPos, subDimsIdx});
-                subPos++;
+            if (val.type == Type::FLOAT) {
+                if (iv->attribute.T.type == Type::INT) {
+                    val.FloatInitVals[pos] = iv->attribute.V.val.IntVal;
+                } else if (iv->attribute.T.type == Type::FLOAT) {
+                    val.FloatInitVals[pos] = iv->attribute.V.val.FloatVal;
+                }
             }
+            pos++;
+        } else {
+            // New Policy: One { } for the max align-able dim
+            // More informations see comments above FindMinDimStep
+            int max_subBlock_sz = 0;
+            int min_dim_step = FindMinDimStep(val, pos - begPos, dimsIdx, max_subBlock_sz);
+            RecursiveArrayInit(iv, val, pos, pos + max_subBlock_sz - 1, dimsIdx + min_dim_step);
+            pos += max_subBlock_sz;
         }
     }
 }
 
-// 通用的初始化函数，处理 int 和 float 类型
-void SolveInitVal(InitVal init, VarAttribute &val) {
-    int arraySize = 1;
-    for (auto dim : val.dims) {
-        arraySize *= dim;
+void SolveIntInitVal(InitVal init, VarAttribute &val)    // used for global or const
+{
+    val.type = Type::INT;
+    int arraySz = 1;
+    for (auto d : val.dims) {
+        arraySz *= d;
     }
-
-    if (val.type == Type::INT) {
-        val.IntInitVals.resize(arraySize, 0);
-    } else if (val.type == Type::FLOAT) {
-        val.FloatInitVals.resize(arraySize, 0);
-    }
-
+    val.IntInitVals.resize(arraySz, 0);
     if (val.dims.empty()) {
         if (init->GetExp() != nullptr) {
             if (init->GetExp()->attribute.T.type == Type::VOID) {
-                error_msgs.push_back("Expression cannot be void in initval in line " + std::to_string(init->GetLineNumber()) + "\n");
-            } else {
-                if (val.type == Type::INT) {
-                    val.IntInitVals[0] = (init->GetExp()->attribute.T.type == Type::INT)
-                        ? init->GetExp()->attribute.V.val.IntVal
-                        : static_cast<int>(init->GetExp()->attribute.V.val.FloatVal);
-                } else if (val.type == Type::FLOAT) {
-                    val.FloatInitVals[0] = (init->GetExp()->attribute.T.type == Type::FLOAT)
-                        ? init->GetExp()->attribute.V.val.FloatVal
-                        : static_cast<float>(init->GetExp()->attribute.V.val.IntVal);
-                }
+                error_msgs.push_back("Expression can not be void in initval in line " +
+                                     std::to_string(init->GetLineNumber()) + "\n");
+            } else if (init->GetExp()->attribute.T.type == Type::INT) {
+                val.IntInitVals[0] = init->GetExp()->attribute.V.val.IntVal;
+            } else if (init->GetExp()->attribute.T.type == Type::FLOAT) {
+                val.IntInitVals[0] = init->GetExp()->attribute.V.val.FloatVal;
             }
         }
+        return;
     } else {
         if (init->IsExp()) {
-            error_msgs.push_back("InitVal cannot be exp in line " + std::to_string(init->GetLineNumber()) + "\n");
+            if ((init)->GetExp() != nullptr) {
+                error_msgs.push_back("InitVal can not be exp in line " + std::to_string(init->GetLineNumber()) + "\n");
+            }
+            return;
         } else {
-            IterativeArrayInit(init, val);
+            RecursiveArrayInit(init, val, 0, arraySz - 1, 0);
         }
     }
 }
 
-void CompUnit_Decl::TypeCheck() {
+void SolveFloatInitVal(InitVal init, VarAttribute &val)    // used for global or const
+{
+    val.type = Type::FLOAT;
+    int arraySz = 1;
+    for (auto d : val.dims) {
+        arraySz *= d;
+    }
+    val.FloatInitVals.resize(arraySz, 0);
+    if (val.dims.empty()) {
+        if (init->GetExp() != nullptr) {
+            if (init->GetExp()->attribute.T.type == Type::VOID) {
+                error_msgs.push_back("exp can not be void in initval in line " + std::to_string(init->GetLineNumber()) +
+                                     "\n");
+            } else if (init->GetExp()->attribute.T.type == Type::FLOAT) {
+                val.FloatInitVals[0] = init->GetExp()->attribute.V.val.FloatVal;
+            } else if (init->GetExp()->attribute.T.type == Type::INT) {
+                val.FloatInitVals[0] = init->GetExp()->attribute.V.val.IntVal;
+            }
+        }
+        return;
+    } else {
+        if (init->IsExp()) {
+            if ((init)->GetExp() != nullptr) {
+                error_msgs.push_back("InitVal can not be exp in line " + std::to_string(init->GetLineNumber()) + "\n");
+            }
+            return;
+        } else {
+            RecursiveArrayInit(init, val, 0, arraySz - 1, 0);
+        }
+    }
+}
+
+void CompUnit_Decl::TypeCheck() { 
     Type::ty type_decl = decl->GetTypedecl();
     auto def_vector = *decl->GetDefs();
-
     for (auto def : def_vector) {
-        std::string varName = def->GetName()->get_string();
 
-        if (semant_table.GlobalTable.count(def->GetName())) {
-            error_msgs.push_back("Multiple definitions of vars in line " + std::to_string(line_number) + "\n");
-            continue;
+        if (semant_table.GlobalTable.find(def->GetName()) != semant_table.GlobalTable.end()) {
+            error_msgs.push_back("multilpe difinitions of vars in line " + std::to_string(line_number) + "\n");
         }
 
         VarAttribute val;
         val.ConstTag = def->IsConst();
-        val.type = type_decl;
+        val.type = (Type::ty)type_decl;
         def->scope = 0;
 
-        auto dims = def->GetDims();
-        if (dims != nullptr) {
-            for (auto dim : *dims) {
-                dim->TypeCheck();
-                if (!dim->attribute.V.ConstTag || dim->attribute.T.type == Type::FLOAT) {
-                    error_msgs.push_back("Array Dim must be const expression in line " + std::to_string(line_number) + "\n");
-                } else {
-                    val.dims.push_back(dim->attribute.V.val.IntVal);
+        if (def->GetDims() != nullptr) {
+            auto dim_vector = *def->GetDims();
+            for (auto d : dim_vector) {
+                d->TypeCheck();
+                if (d->attribute.V.ConstTag == false) {
+                    error_msgs.push_back("Array Dim must be const expression " + std::to_string(line_number) + "\n");
                 }
+                if (d->attribute.T.type == Type::FLOAT) {
+                    error_msgs.push_back("Array Dim can not be float in line " + std::to_string(line_number) + "\n");
+                }
+            }
+            for (auto d : dim_vector) {
+                val.dims.push_back(d->attribute.V.val.IntVal);
             }
         }
 
-        InitVal init = def->GetInit();  // 将 init 声明移动到 if 语句之外
+        InitVal init = def->GetInit();
         if (init != nullptr) {
             init->TypeCheck();
-            SolveInitVal(init, val);
+            if (type_decl == Type::INT) {
+                SolveIntInitVal(init, val);
+            } else if (type_decl == Type::FLOAT) {
+                SolveFloatInitVal(init, val);
+            }
         }
 
         if (def->IsConst()) {
-            ConstGlobalMap[varName] = val;
+            ConstGlobalMap[def->GetName()->get_string()] = val;
         }
-        StaticGlobalMap[varName] = val;
+
+        StaticGlobalMap[def->GetName()->get_string()] = val;
         semant_table.GlobalTable[def->GetName()] = val;
 
-        // 生成全局变量定义的 LLVM 指令
-        auto lltype = Type2LLvm[type_decl];
-        Instruction globalDecl = nullptr;
+        // add Global Decl llvm ins
+        BasicInstruction::LLVMType lltype = Type2LLvm[type_decl];
 
-        if (dims != nullptr) {
-            globalDecl = new GlobalVarDefineInstruction(varName, lltype, val);
+        Instruction globalDecl;
+        if (def->GetDims() != nullptr) {
+            globalDecl = new GlobalVarDefineInstruction(def->GetName()->get_string(), lltype, val);
         } else if (init == nullptr) {
-            globalDecl = new GlobalVarDefineInstruction(varName, lltype, nullptr);
-        } else {
-            if (val.type == Type::INT) {
-                globalDecl = new GlobalVarDefineInstruction(varName, lltype, new ImmI32Operand(val.IntInitVals[0]));
-            } else if (val.type == Type::FLOAT) {
-                globalDecl = new GlobalVarDefineInstruction(varName, lltype, new ImmF32Operand(val.FloatInitVals[0]));
-            }
+            globalDecl = new GlobalVarDefineInstruction(def->GetName()->get_string(), lltype, nullptr);
+        } else if (lltype == BasicInstruction::I32) {
+            globalDecl =
+            new GlobalVarDefineInstruction(def->GetName()->get_string(), lltype, new ImmI32Operand(val.IntInitVals[0]));
+        } else if (lltype == BasicInstruction::FLOAT32) {
+            globalDecl = new GlobalVarDefineInstruction(def->GetName()->get_string(), lltype,
+                                                        new ImmF32Operand(val.FloatInitVals[0]));
         }
         llvmIR.global_def.push_back(globalDecl);
     }
+    //TODO("CompUnitDecl Semant");
 }
+
 void CompUnit_FuncDef::TypeCheck() { func_def->TypeCheck(); }
 
 
