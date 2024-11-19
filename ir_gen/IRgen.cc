@@ -459,7 +459,26 @@ void Lval::codeIR() {
 
     // 保留数组条件判断，但暂时不处理数组
     if (attribute.T.type == Type::PTR || dims != nullptr) {
-        // TODO: 处理数组索引
+        // 处理数组索引
+        std::vector<Operand> array_indexs;
+        // 对每个维度的索引表达式进行 codeIR，并进行类型转换
+        for (auto dim_exp : *dims) {
+            dim_exp->codeIR();
+            int idx_reg = irgen_table.register_counter;
+            IRgenTypeConverse(B, dim_exp->attribute.T.type, Type::INT, idx_reg);
+            array_indexs.push_back(GetNewRegOperand(idx_reg));
+        }
+
+        // 如果是形参数组，第一个索引不需要 0
+        if (formal_array_tag) {
+            // 形参数组，第一个索引不需要 0
+            IRgenGetElementptrIndexI32(B, lltype, ++irgen_table.register_counter, ptr_operand, lval_attribute.dims, array_indexs);
+        } else {
+            // 普通数组，需要在索引前加一个 0
+            array_indexs.insert(array_indexs.begin(), new ImmI32Operand(0));
+            IRgenGetElementptrIndexI32(B, lltype, ++irgen_table.register_counter, ptr_operand, lval_attribute.dims, array_indexs);
+        }
+        ptr_operand = GetNewRegOperand(irgen_table.register_counter);
     }
 
     // 存储指针操作数
@@ -832,6 +851,62 @@ void VarInitVal_exp::codeIR() {
     // TODO("VarInitValWithExp CodeIR");
 }
 
+int FindMinDimStepIR(const std::vector<int>& dims, int relativePos, int dimsIdx, int& max_subBlock_sz) {
+    int min_dim_step = 1;
+    int blockSz = 1;
+    for (size_t i = dimsIdx + 1; i < dims.size(); i++) {
+        blockSz *= dims[i];
+    }
+    while (relativePos % blockSz != 0) {
+        min_dim_step++;
+        blockSz /= dims[dimsIdx + min_dim_step - 1];
+    }
+    max_subBlock_sz = blockSz;
+    return min_dim_step;
+}
+
+std::vector<int> GetIndexes(const std::vector<int>& dims, int absoluteIndex) {
+    std::vector<int> ret;
+    for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
+        int dim = *it;
+        ret.insert(ret.begin(), absoluteIndex % dim);
+        absoluteIndex /= dim;
+    }
+    return ret;
+}
+
+void RecursiveArrayInitIR(LLVMBlock block, const std::vector<int>& dims, int arrayaddr_reg_no, InitVal init,
+                          int beginPos, int endPos, int dimsIdx, Type::ty ArrayType) {
+    int pos = beginPos;
+    for (InitVal iv : *(init->GetList())) {
+        if (iv->IsExp()) {
+            iv->codeIR();
+            int init_val_reg = irgen_table.register_counter;
+            IRgenTypeConverse(block, iv->attribute.T.type, ArrayType, init_val_reg);
+            init_val_reg = irgen_table.register_counter;
+
+            int addr_reg = ++irgen_table.register_counter;
+            auto gep = new GetElementptrInstruction(Type2LLVM(ArrayType), GetNewRegOperand(addr_reg),
+                                                    GetNewRegOperand(arrayaddr_reg_no), dims,
+                                                    BasicInstruction::I32);
+            gep->push_idx_imm32(0);
+            std::vector<int> indexes = GetIndexes(dims, pos);
+            for (int idx : indexes) {
+                gep->push_idx_imm32(idx);
+            }
+            block->InsertInstruction(1, gep);
+            IRgenStore(block, Type2LLVM(ArrayType), GetNewRegOperand(init_val_reg), GetNewRegOperand(addr_reg));
+            pos++;
+        } else {
+            int max_subBlock_sz = 0;
+            int min_dim_step = FindMinDimStepIR(dims, pos - beginPos, dimsIdx, max_subBlock_sz);
+            RecursiveArrayInitIR(block, dims, arrayaddr_reg_no, iv, pos, pos + max_subBlock_sz - 1,
+                                 dimsIdx + min_dim_step, ArrayType);
+            pos += max_subBlock_sz;
+        }
+    }
+}
+
 void VarDef_no_init::codeIR() {
     LLVMBlock B = llvmIR.GetBlock(this_function, 0);
     LLVMBlock InitB = llvmIR.GetBlock(this_function, function_label);
@@ -855,7 +930,31 @@ void VarDef_no_init::codeIR() {
         }
         IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
     } else {
-        // TODO: 处理数组的内存分配（后续实现）
+        // 处理数组变量
+        // 获取维度信息
+        auto dims_vector = *GetDims();
+        for (auto dim : dims_vector) {
+            dim->codeIR();
+            attribute.dims.push_back(dim->attribute.V.val.IntVal);
+        }
+
+        // 在符号表中记录维度信息
+        RegTable[allocation_register] = attribute;
+
+        // 使用 Alloca 指令为数组分配内存
+        IRgenAllocaArray(B, Type2LLVM(current_type_decl), allocation_register, attribute.dims);
+
+        // 初始化数组为零（可选）
+        int array_size = 1;
+        for (int dim_size : attribute.dims) {
+            array_size *= dim_size;
+        }
+        CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
+        memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
+        memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
+        memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
+        memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
+        InitB->InsertInstruction(1, memsetCall);
     }
     // TODO("VarDefNoInit CodeIR");
 }
@@ -891,7 +990,50 @@ void VarDef::codeIR() {
             IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
         }
     } else {
-        // TODO: 处理数组的内存分配和初始化（后续实现）
+        // 数组变量
+        // 获取维度信息
+        auto dims_vector = *GetDims();
+        for (auto dim : dims_vector) {
+            dim->codeIR();
+            attribute.dims.push_back(dim->attribute.V.val.IntVal);
+        }
+
+        // 在符号表中记录维度信息
+        RegTable[allocation_register] = attribute;
+
+        // 使用 Alloca 指令为数组分配内存
+        IRgenAllocaArray(B, Type2LLVM(current_type_decl), allocation_register, attribute.dims);
+
+        // 初始化数组（递归初始化）
+        InitVal initializer = GetInit();
+        if (initializer != nullptr) {
+            int array_size = 1;
+            for (int dim_size : attribute.dims) {
+                array_size *= dim_size;
+            }
+
+            // 先将数组内存清零
+            CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
+            memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
+            memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
+            memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
+            memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
+            InitB->InsertInstruction(1, memsetCall);
+
+            // 递归初始化数组
+            RecursiveArrayInitIR(InitB, attribute.dims, allocation_register, initializer, 0, array_size - 1, 0, current_type_decl);
+        } else {
+            int array_size = 1;
+            for (int dim_size : attribute.dims) {
+                array_size *= dim_size;
+            }
+            CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
+            memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
+            memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
+            memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
+            memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
+            InitB->InsertInstruction(1, memsetCall);
+        }
     }
     // TODO("VarDef CodeIR");
 }
@@ -917,7 +1059,39 @@ void ConstDef::codeIR() {
         Operand value_operand = GetNewRegOperand(irgen_table.register_counter);
         IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
     } else {
-        // TODO: 处理数组的内存分配和初始化（后续实现）
+        // 数组常量
+        // 获取维度信息
+        auto dims_vector = *GetDims();
+        for (auto dim : dims_vector) {
+            dim->codeIR();
+            attribute.dims.push_back(dim->attribute.V.val.IntVal);
+        }
+
+        // 在符号表中记录维度信息
+        RegTable[allocation_register] = attribute;
+
+        // 使用 Alloca 指令为数组分配内存
+        IRgenAllocaArray(B, Type2LLVM(current_type_decl), allocation_register, attribute.dims);
+
+        // 初始化数组（递归初始化）
+        InitVal initializer = GetInit();
+        assert(initializer != nullptr);
+
+        int array_size = 1;
+        for (int dim_size : attribute.dims) {
+            array_size *= dim_size;
+        }
+
+        // 先将数组内存清零
+        CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
+        memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
+        memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
+        memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
+        memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
+        InitB->InsertInstruction(1, memsetCall);
+
+        // 递归初始化数组
+        RecursiveArrayInitIR(InitB, attribute.dims, allocation_register, initializer, 0, array_size - 1, 0, current_type_decl);
     }
     // TODO("ConstDef CodeIR");
 }
