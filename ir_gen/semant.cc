@@ -9,7 +9,7 @@
     以及对语义错误的代码输出报错信息
 */
 static bool MainFlag = false;
-bool inside_loop = false;
+int inside_loop = 0;
 bool isArrayContext = false;
 /*
     错误检查的基本要求:
@@ -1141,13 +1141,13 @@ void if_stmt::TypeCheck() {
 }
 
 void while_stmt::TypeCheck() {
-    inside_loop = true;
+    inside_loop++;
     Cond->TypeCheck();
     if (Cond->attribute.T.type == Type::VOID) {
         error_msgs.push_back("while cond type is invalid " + std::to_string(Cond->GetLineNumber()) + "\n");
     }
     body->TypeCheck();
-    inside_loop = false;
+    inside_loop--;
     //TODO("WhileStmt Semant"); 
 }
 
@@ -1204,10 +1204,10 @@ void VarInitVal::TypeCheck() {
     for (auto init_val : *initval) {
         init_val->TypeCheck();
         
-        // 检查每个初始化值的类型是否匹配变量的类型（例如int、float等）
+        /*// 检查每个初始化值的类型是否匹配变量的类型（例如int、float等）
         if (init_val->attribute.T.type != attribute.T.type) {
             error_msgs.push_back("Error: Type mismatch in VarInitVal initializer at line " + std::to_string(line_number) + "\n");
-        }
+        }*/
     }
     //TODO("VarInitVal Semant"); 
 }
@@ -1266,6 +1266,12 @@ void VarDef::TypeCheck() {
         error_msgs.push_back("Variable '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
         return;
     }
+
+    // 将变量添加到符号表中
+    VarAttribute var_attr;
+    var_attr.type = attribute.T.type;
+    var_attr.ConstTag = false;
+
     // 检查数组维度是否合法
     if (dims != nullptr) {
         for (auto d : *dims) {
@@ -1288,15 +1294,6 @@ void VarDef::TypeCheck() {
         }
     }
 
-    // 将变量添加到符号表中
-    VarAttribute var_attr;
-    var_attr.type = attribute.T.type;
-    var_attr.ConstTag = false;
-    if (dims != nullptr) {
-        for (auto d : *dims) {
-            var_attr.dims.push_back(d->attribute.V.val.IntVal); // 存储数组维度
-        }
-    }
     semant_table.symbol_table.add_Symbol(name, var_attr);
     //TODO("VarDef Semant"); 
 }
@@ -1654,5 +1651,6 @@ void CompUnit_Decl::TypeCheck() {
 }
 
 void CompUnit_FuncDef::TypeCheck() { func_def->TypeCheck(); }
+
 
 
