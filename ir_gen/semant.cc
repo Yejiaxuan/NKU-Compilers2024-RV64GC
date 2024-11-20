@@ -10,6 +10,7 @@
 */
 static bool MainFlag = false;
 bool inside_loop = false;
+bool isArrayContext = false;
 /*
     错误检查的基本要求:
     • 检查 main 函数是否存在 (根据SysY定义，如果不存在main函数应当报错)；
@@ -867,12 +868,12 @@ void Lval::TypeCheck() {
         } else {
             for (auto dim : *dims) {
                 dim->TypeCheck();
-                if (!dim->attribute.V.ConstTag || dim->attribute.T.type != Type::INT) {
+                if (dim->attribute.T.type != Type::INT) {
                     error_msgs.push_back("Error: Array index must be a constant integer for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
                 }
             }
         }
-    } else if (!val.dims.empty()) {
+    } else if (!val.dims.empty() && !isArrayContext) {
         error_msgs.push_back("Error: Array variable '" + name->get_string() + "' used without index at line " + std::to_string(line_number) + "\n");
     }
     //TODO("Lval Semant"); 
@@ -901,6 +902,7 @@ std::string type_to_string(Type::ty type) {
 }
 
 void Func_call::TypeCheck() {
+    isArrayContext = true;
     // 获取函数的定义
     auto it = semant_table.FunctionTable.find(name);
     if (it == semant_table.FunctionTable.end()) {
@@ -960,6 +962,8 @@ void Func_call::TypeCheck() {
 
     // 设置返回类型为函数定义的返回类型
     attribute.T.type = func_def->return_type;
+
+    isArrayContext = false; 
 }
 
 void UnaryExp_plus::TypeCheck() { 
