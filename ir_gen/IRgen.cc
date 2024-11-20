@@ -703,6 +703,7 @@ void assign_stmt::codeIR() {
     exp->codeIR();
     int reg = irgen_table.register_counter;
     IRgenTypeConverse(block, exp->attribute.T.type, lval->attribute.T.type, reg);
+    reg = irgen_table.register_counter;
     IRgenStore(block, Type2LLVM(lval->attribute.T.type), GetNewRegOperand(reg), ((Lval *)lval)->ptr);
     // TODO("AssignStmt CodeIR");
 }
