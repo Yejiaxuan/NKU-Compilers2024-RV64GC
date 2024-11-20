@@ -2163,90 +2163,88 @@ void VarDef_no_init::TypeCheck() {
 }
 
 void VarDef::TypeCheck() {
-    int current_scope = semant_table.symbol_table.get_current_scope();
-    // 检查是否在当前作用域中重复定义
-    if (semant_table.symbol_table.lookup_scope(name) == current_scope)  {
-        // 错误：全局作用域中已有同名变量
-        error_msgs.push_back("Variable '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
+    // 检查重复定义
+    if (semant_table.symbol_table.lookup_scope(name) == semant_table.symbol_table.get_current_scope()) {
+        error_msgs.push_back("multiple definition of " + name->get_string() + " exists in line " + 
+                            std::to_string(line_number) + "\n");
         return;
     }
 
-    // 将变量添加到符号表中
     VarAttribute var_attr;
     var_attr.type = attribute.T.type;
     var_attr.ConstTag = false;
+    scope = semant_table.symbol_table.get_current_scope();
 
-    // 检查数组维度是否合法
+    // 检查数组维度
     if (dims != nullptr) {
         for (auto d : *dims) {
             d->TypeCheck();
             if (!d->attribute.V.ConstTag) {
-                error_msgs.push_back("Array dimension must be a constant expression for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+                error_msgs.push_back("Array Dim must be const expression in line " + 
+                                   std::to_string(line_number) + "\n");
             }
             if (d->attribute.T.type == Type::FLOAT) {
-                error_msgs.push_back("Array dimension cannot be of type float for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+                error_msgs.push_back("Array Dim can not be float in line " + 
+                                   std::to_string(line_number) + "\n");
             }
             var_attr.dims.push_back(d->attribute.V.val.IntVal);
         }
     }
 
-    // 检查并处理初始化值
+    // 处理初始化
     if (init != nullptr) {
         init->TypeCheck();
-
-        if (init->attribute.T.type != attribute.T.type && init->attribute.T.type != Type::VOID) {
-            error_msgs.push_back("Type mismatch in initializer for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-        }
     }
 
+    // 添加到符号表
     semant_table.symbol_table.add_Symbol(name, var_attr);
+
     //TODO("VarDef Semant"); 
 }
 
 void ConstDef::TypeCheck() { 
-    // 检查是否在当前作用域中重复定义
-    int current_scope = semant_table.symbol_table.get_current_scope();
-    if (semant_table.symbol_table.lookup_scope(name) == current_scope) {
-        error_msgs.push_back("Constant '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
+    // 检查重复定义
+    if (semant_table.symbol_table.lookup_scope(name) == semant_table.symbol_table.get_current_scope()) {
+        error_msgs.push_back("multiple definition of " + name->get_string() + " in line " + 
+                            std::to_string(line_number) + "\n");
         return;
     }
+
     VarAttribute const_attr;
-    const_attr.type = attribute.T.type;
+    const_attr.type = attribute.T.type; 
     const_attr.ConstTag = true;
-    // 检查数组维度是否合法
+    scope = semant_table.symbol_table.get_current_scope();
+
+    // 检查数组维度
     if (dims != nullptr) {
         for (auto d : *dims) {
             d->TypeCheck();
             if (!d->attribute.V.ConstTag) {
-                error_msgs.push_back("Array dimension must be a constant expression for '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+                error_msgs.push_back("Array Dim must be const expression in line " + 
+                                   std::to_string(line_number) + "\n");
             }
             if (d->attribute.T.type == Type::FLOAT) {
-                error_msgs.push_back("Array dimension cannot be of type float for '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+                error_msgs.push_back("Array Dim can not be float in line " + 
+                                   std::to_string(line_number) + "\n");
             }
+            const_attr.dims.push_back(d->attribute.V.val.IntVal);
         }
     }
-    
-    // 如果有初始化值，检查初始化值的类型是否匹配
+
+    // 处理初始化
     if (init != nullptr) {
         init->TypeCheck();
-
-        // 处理初始化值
-        if (init != nullptr) {
-            init->TypeCheck();
-            if (attribute.T.type == Type::INT) {
-                SolveIntInitVal(init, const_attr);
-            } else if (attribute.T.type == Type::FLOAT) {
-                SolveFloatInitVal(init, const_attr);
-            }
+        if (attribute.T.type == Type::INT) {
+            SolveIntInitVal(init, const_attr);
+        } else if (attribute.T.type == Type::FLOAT) {
+            SolveFloatInitVal(init, const_attr);
         }
     }
 
-    if (dims != nullptr) {
-        for (auto d : *dims) {
-            const_attr.dims.push_back(d->attribute.V.val.IntVal); // 存储数组维度
-        }
-    }
+    // 添加到符号表
     semant_table.symbol_table.add_Symbol(name, const_attr);
+
+    //TODO("ConstDef Semant");
 }
 
 void VarDecl::TypeCheck() { 
