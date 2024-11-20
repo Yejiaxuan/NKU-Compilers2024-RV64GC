@@ -1846,55 +1846,11 @@ void PrimaryExp_branch::TypeCheck() {
 }
 
 void assign_stmt::TypeCheck() { 
-    // 检查左值变量是否已声明
-    if (lval == nullptr) {
-        error_msgs.push_back("Left-hand side of assignment is missing at line " + std::to_string(line_number) + "\n");
-        return;
-    }
-
-    lval->TypeCheck(); // 对左值变量进行类型检查，确保其已声明并有效
-
-    // 检查右侧表达式是否存在
-    if (exp == nullptr) {
-        error_msgs.push_back("Right-hand side of assignment is missing at line " + std::to_string(line_number) + "\n");
-        return;
-    }
-
-    exp->TypeCheck(); // 对右值表达式进行类型检查
-
-    // 设置类型变量，便于后续检查
-    Type::ty left_type = lval->attribute.T.type;
-    Type::ty right_type = exp->attribute.T.type;
-    ((Lval *)lval)->is_left = true; 
-    // 检查左值是否为常量，常量不能被赋值
-    if (lval->attribute.V.ConstTag) {
-        error_msgs.push_back("Error: Left-hand side cannot be a constant at line " + std::to_string(line_number) + "\n");
-        return;
-    }
-
-    // 检查右值是否为 VOID 类型
-    if (right_type == Type::VOID) {
-        error_msgs.push_back("Error: Right-hand side cannot be of type 'void' at line " + std::to_string(line_number) + "\n");
-        return;
-    }
-
-    // 检查左值和右值的类型是否一致或可以隐式转换
-    if (left_type != right_type) {
-        // 允许 int 转换为 bool
-        if (left_type == Type::BOOL && right_type == Type::INT) {
-            // 设置赋值语句类型为左值的类型
-            attribute.T.type = left_type;
-            attribute.V.ConstTag = false;
-        }
-        // 允许 bool 转换为 int
-        else if (left_type == Type::INT && right_type == Type::BOOL) {
-            // 设置赋值语句类型为左值的类型
-            attribute.T.type = left_type;
-            attribute.V.ConstTag = false;
-        } else {
-            error_msgs.push_back("Error: Type mismatch in assignment at line " + std::to_string(line_number) + "\n");
-            return;
-        }
+    lval->TypeCheck();
+    exp->TypeCheck();
+    ((Lval *)lval)->is_left = true;    // assign_stmt -> leftvalue
+    if (exp->attribute.T.type == Type::VOID) {
+        error_msgs.push_back("void type can not be assign_stmt's expression " + std::to_string(line_number) + "\n");
     }
 
     //TODO("AssignStmt Semant"); 
