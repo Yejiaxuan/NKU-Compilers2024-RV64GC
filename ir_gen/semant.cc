@@ -9,8 +9,8 @@
     以及对语义错误的代码输出报错信息
 */
 static bool MainFlag = false;
-int inside_loop = 0;
-bool isArrayContext = false;
+int InWhileCount = 0;
+static int GlobalStrCnt = 0;
 /*
     错误检查的基本要求:
     • 检查 main 函数是否存在 (根据SysY定义，如果不存在main函数应当报错)；
@@ -51,100 +51,240 @@ void Exp::TypeCheck() {
 void AddExp_plus::TypeCheck() {
     addexp->TypeCheck();
     mulexp->TypeCheck();
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = addexp->attribute.V.ConstTag & mulexp->attribute.V.ConstTag;
 
-    // 隐式类型转换
-    Type::ty leftType = addexp->attribute.T.type;
-    Type::ty rightType = mulexp->attribute.T.type;
-
-    // bool 转 int
-    if (leftType == Type::BOOL) {
-        addexp->attribute.T.type = Type::INT;
+    switch(addexp->attribute.T.type) {
+        case Type::INT:
+            switch(mulexp->attribute.T.type) {
+                case Type::INT:    // int + int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = addexp->attribute.V.val.IntVal + 
+                                               mulexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int + float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = (float)addexp->attribute.V.val.IntVal + 
+                                                 mulexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int + bool
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = addexp->attribute.V.val.IntVal + 
+                                               (mulexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                case Type::PTR:    // int + ptr
+                case Type::VOID:   // int + void
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for + in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::FLOAT:
+            switch(mulexp->attribute.T.type) {
+                case Type::INT:    // float + int
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = addexp->attribute.V.val.FloatVal + 
+                                                 (float)mulexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float + float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = addexp->attribute.V.val.FloatVal + 
+                                                 mulexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float + bool
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = addexp->attribute.V.val.FloatVal + 
+                                                 (mulexp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                case Type::PTR:    // float + ptr
+                case Type::VOID:   // float + void
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for + in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::BOOL:
+            switch(mulexp->attribute.T.type) {
+                case Type::INT:    // bool + int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = (addexp->attribute.V.val.BoolVal ? 1 : 0) + 
+                                               mulexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool + float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = (addexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) + 
+                                                 mulexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool + bool
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = (addexp->attribute.V.val.BoolVal ? 1 : 0) + 
+                                               (mulexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                case Type::PTR:    // bool + ptr
+                case Type::VOID:   // bool + void
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for + in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::PTR:           // ptr + any
+        case Type::VOID:          // void + any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for + in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
-    if (rightType == Type::BOOL) {
-        mulexp->attribute.T.type = Type::INT;
-    }
-
-    // int 转 float
-    if (addexp->attribute.T.type == Type::INT && mulexp->attribute.T.type == Type::FLOAT) {
-        addexp->attribute.T.type = Type::FLOAT;
-    }
-    if (addexp->attribute.T.type == Type::FLOAT && mulexp->attribute.T.type == Type::INT) {
-        mulexp->attribute.T.type = Type::FLOAT;
-    }
-
-    // 检查运算数类型是否为void
-    if (addexp->attribute.T.type == Type::VOID || mulexp->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("Addition error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT;
-    } else {
-        // 类型提升
-        if (addexp->attribute.T.type == Type::FLOAT || mulexp->attribute.T.type == Type::FLOAT) {
-            attribute.T.type = Type::FLOAT;
-        } else {
-            attribute.T.type = Type::INT;
-        }
-    }
-
-    // 常量折叠
-    attribute.V.ConstTag = addexp->attribute.V.ConstTag && mulexp->attribute.V.ConstTag;
-    if (attribute.V.ConstTag) {
-        if (attribute.T.type == Type::INT) {
-            attribute.V.val.IntVal = addexp->attribute.V.val.IntVal + mulexp->attribute.V.val.IntVal;
-        } else {
-            attribute.V.val.FloatVal = (addexp->attribute.T.type == Type::INT ? addexp->attribute.V.val.IntVal : addexp->attribute.V.val.FloatVal)
-                                     + (mulexp->attribute.T.type == Type::INT ? mulexp->attribute.V.val.IntVal : mulexp->attribute.V.val.FloatVal);
-        }
-    }
-
-    //TODO("BinaryExp Semant");
 }
 
 void AddExp_sub::TypeCheck() {
     addexp->TypeCheck();
     mulexp->TypeCheck();
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = addexp->attribute.V.ConstTag & mulexp->attribute.V.ConstTag;
 
-    // 隐式类型转换
-    Type::ty leftType = addexp->attribute.T.type;
-    Type::ty rightType = mulexp->attribute.T.type;
-
-    // bool 转 int
-    if (leftType == Type::BOOL) {
-        addexp->attribute.T.type = Type::INT;
-    }
-    if (rightType == Type::BOOL) {
-        mulexp->attribute.T.type = Type::INT;
-    }
-
-    // int 转 float
-    if (addexp->attribute.T.type == Type::INT && mulexp->attribute.T.type == Type::FLOAT) {
-        addexp->attribute.T.type = Type::FLOAT;
-    }
-    if (addexp->attribute.T.type == Type::FLOAT && mulexp->attribute.T.type == Type::INT) {
-        mulexp->attribute.T.type = Type::FLOAT;
-    }
-
-    // 检查运算数类型是否为void
-    if (addexp->attribute.T.type == Type::VOID || mulexp->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("Subtraction error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT;
-    } else {
-        // 类型提升
-        if (addexp->attribute.T.type == Type::FLOAT || mulexp->attribute.T.type == Type::FLOAT) {
-            attribute.T.type = Type::FLOAT;
-        } else {
-            attribute.T.type = Type::INT;
-        }
-    }
-
-    // 常量折叠
-    attribute.V.ConstTag = addexp->attribute.V.ConstTag && mulexp->attribute.V.ConstTag;
-    if (attribute.V.ConstTag) {
-        if (attribute.T.type == Type::INT) {
-            attribute.V.val.IntVal = addexp->attribute.V.val.IntVal - mulexp->attribute.V.val.IntVal;
-        } else {
-            attribute.V.val.FloatVal = (addexp->attribute.T.type == Type::INT ? addexp->attribute.V.val.IntVal : addexp->attribute.V.val.FloatVal)
-                                     - (mulexp->attribute.T.type == Type::INT ? mulexp->attribute.V.val.IntVal : mulexp->attribute.V.val.FloatVal);
-        }
+    switch(addexp->attribute.T.type) {
+        case Type::INT:
+            switch(mulexp->attribute.T.type) {
+                case Type::INT:    // int - int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = addexp->attribute.V.val.IntVal - 
+                                               mulexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int - float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = (float)addexp->attribute.V.val.IntVal - 
+                                                 mulexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int - bool
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = addexp->attribute.V.val.IntVal - 
+                                               (mulexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // int - (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for - in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::FLOAT:
+            switch(mulexp->attribute.T.type) {
+                case Type::INT:    // float - int
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = addexp->attribute.V.val.FloatVal - 
+                                                 (float)mulexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float - float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = addexp->attribute.V.val.FloatVal - 
+                                                 mulexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float - bool
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = addexp->attribute.V.val.FloatVal - 
+                                                 (mulexp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                default:           // float - (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for - in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::BOOL:
+            switch(mulexp->attribute.T.type) {
+                case Type::INT:    // bool - int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = (addexp->attribute.V.val.BoolVal ? 1 : 0) - 
+                                               mulexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool - float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = (addexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) - 
+                                                 mulexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool - bool
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = (addexp->attribute.V.val.BoolVal ? 1 : 0) - 
+                                               (mulexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // bool - (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for - in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) - any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for - in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
 
     //TODO("BinaryExp Semant");
@@ -153,49 +293,118 @@ void AddExp_sub::TypeCheck() {
 void MulExp_mul::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = mulexp->attribute.V.ConstTag & unary_exp->attribute.V.ConstTag;
 
-    // 隐式类型转换
-    Type::ty leftType = mulexp->attribute.T.type;
-    Type::ty rightType = unary_exp->attribute.T.type;
-
-    // bool 转 int
-    if (leftType == Type::BOOL) {
-        mulexp->attribute.T.type = Type::INT;
-    }
-    if (rightType == Type::BOOL) {
-        unary_exp->attribute.T.type = Type::INT;
-    }
-
-    // int 转 float
-    if (mulexp->attribute.T.type == Type::INT && unary_exp->attribute.T.type == Type::FLOAT) {
-        mulexp->attribute.T.type = Type::FLOAT;
-    }
-    if (mulexp->attribute.T.type == Type::FLOAT && unary_exp->attribute.T.type == Type::INT) {
-        unary_exp->attribute.T.type = Type::FLOAT;
-    }
-
-    // 检查运算数类型是否为void
-    if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("Multiplication error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT;
-    } else {
-        // 类型提升
-        if (mulexp->attribute.T.type == Type::FLOAT || unary_exp->attribute.T.type == Type::FLOAT) {
-            attribute.T.type = Type::FLOAT;
-        } else {
-            attribute.T.type = Type::INT;
-        }
-    }
-
-    // 常量折叠
-    attribute.V.ConstTag = mulexp->attribute.V.ConstTag && unary_exp->attribute.V.ConstTag;
-    if (attribute.V.ConstTag) {
-        if (attribute.T.type == Type::INT) {
-            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal * unary_exp->attribute.V.val.IntVal;
-        } else {
-            attribute.V.val.FloatVal = (mulexp->attribute.T.type == Type::INT ? mulexp->attribute.V.val.IntVal : mulexp->attribute.V.val.FloatVal)
-                                     * (unary_exp->attribute.T.type == Type::INT ? unary_exp->attribute.V.val.IntVal : unary_exp->attribute.V.val.FloatVal);
-        }
+    switch(mulexp->attribute.T.type) {
+        case Type::INT:
+            switch(unary_exp->attribute.T.type) {
+                case Type::INT:    // int * int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal * 
+                                               unary_exp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int * float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = (float)mulexp->attribute.V.val.IntVal * 
+                                                 unary_exp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int * bool
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal * 
+                                               (unary_exp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // int * (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for * in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::FLOAT:
+            switch(unary_exp->attribute.T.type) {
+                case Type::INT:    // float * int
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal * 
+                                                 (float)unary_exp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float * float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal * 
+                                                 unary_exp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float * bool
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal * 
+                                                 (unary_exp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                default:           // float * (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for * in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::BOOL:
+            switch(unary_exp->attribute.T.type) {
+                case Type::INT:    // bool * int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = (mulexp->attribute.V.val.BoolVal ? 1 : 0) * 
+                                               unary_exp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool * float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.FloatVal = (mulexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) * 
+                                                 unary_exp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool * bool
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.IntVal = (mulexp->attribute.V.val.BoolVal ? 1 : 0) * 
+                                               (unary_exp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // bool * (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for * in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) * any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for * in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -203,163 +412,336 @@ void MulExp_mul::TypeCheck() {
 void MulExp_div::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = mulexp->attribute.V.ConstTag & unary_exp->attribute.V.ConstTag;
 
-    // 隐式类型转换
-    Type::ty leftType = mulexp->attribute.T.type;
-    Type::ty rightType = unary_exp->attribute.T.type;
-
-    // bool 转 int
-    if (leftType == Type::BOOL) {
-        mulexp->attribute.T.type = Type::INT;
+    switch(mulexp->attribute.T.type) {
+        case Type::INT:
+            switch(unary_exp->attribute.T.type) {
+                case Type::INT:    // int / int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        // 除数为0检查
+                        if (unary_exp->attribute.V.val.IntVal == 0) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal / 
+                                                   unary_exp->attribute.V.val.IntVal;
+                        }
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int / float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        if (unary_exp->attribute.V.val.FloatVal == 0.0f) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.FloatVal = (float)mulexp->attribute.V.val.IntVal / 
+                                                     unary_exp->attribute.V.val.FloatVal;
+                        }
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int / bool
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        if (!unary_exp->attribute.V.val.BoolVal) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal;
+                        }
+                    }
+                    break;
+                    
+                default:           // int / (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for / in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::FLOAT:
+            switch(unary_exp->attribute.T.type) {
+                case Type::INT:    // float / int
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        if (unary_exp->attribute.V.val.IntVal == 0) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal / 
+                                                     (float)unary_exp->attribute.V.val.IntVal;
+                        }
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float / float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        if (unary_exp->attribute.V.val.FloatVal == 0.0f) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal / 
+                                                     unary_exp->attribute.V.val.FloatVal;
+                        }
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float / bool
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        if (!unary_exp->attribute.V.val.BoolVal) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal;
+                        }
+                    }
+                    break;
+                    
+                default:           // float / (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for / in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::BOOL:
+            switch(unary_exp->attribute.T.type) {
+                case Type::INT:    // bool / int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        if (unary_exp->attribute.V.val.IntVal == 0) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.IntVal = (mulexp->attribute.V.val.BoolVal ? 1 : 0) / 
+                                                   unary_exp->attribute.V.val.IntVal;
+                        }
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool / float
+                    attribute.T.type = Type::FLOAT;
+                    if (attribute.V.ConstTag) {
+                        if (unary_exp->attribute.V.val.FloatVal == 0.0f) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.FloatVal = (mulexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) / 
+                                                     unary_exp->attribute.V.val.FloatVal;
+                        }
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool / bool
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        if (!unary_exp->attribute.V.val.BoolVal) {
+                            error_msgs.push_back("Division by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.IntVal = mulexp->attribute.V.val.BoolVal ? 1 : 0;
+                        }
+                    }
+                    break;
+                    
+                default:           // bool / (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for / in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) / any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for / in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
-    if (rightType == Type::BOOL) {
-        unary_exp->attribute.T.type = Type::INT;
-    }
-
-    // int 转 float
-    if (mulexp->attribute.T.type == Type::INT && unary_exp->attribute.T.type == Type::FLOAT) {
-        mulexp->attribute.T.type = Type::FLOAT;
-    }
-    if (mulexp->attribute.T.type == Type::FLOAT && unary_exp->attribute.T.type == Type::INT) {
-        unary_exp->attribute.T.type = Type::FLOAT;
-    }
-
-    // 检查运算数类型是否为void
-    if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("Division error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT;
-    } else {
-        // 类型提升
-        if (mulexp->attribute.T.type == Type::FLOAT || unary_exp->attribute.T.type == Type::FLOAT) {
-            attribute.T.type = Type::FLOAT;
-        } else {
-            attribute.T.type = Type::INT;
-        }
-    }
-
-    // 检查除以0的情况
-    if (unary_exp->attribute.V.ConstTag) {
-        if ((unary_exp->attribute.T.type == Type::INT && unary_exp->attribute.V.val.IntVal == 0) ||
-            (unary_exp->attribute.T.type == Type::FLOAT && unary_exp->attribute.V.val.FloatVal == 0.0f)) {
-            error_msgs.push_back("Division by zero at line " + std::to_string(line_number) + "\n");
-            return;
-        }
-    }
-
-    // 常量折叠
-    attribute.V.ConstTag = mulexp->attribute.V.ConstTag && unary_exp->attribute.V.ConstTag;
-    if (attribute.V.ConstTag) {
-        if (attribute.T.type == Type::INT) {
-            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal / unary_exp->attribute.V.val.IntVal;
-        } else {
-            attribute.V.val.FloatVal = (mulexp->attribute.T.type == Type::INT ? mulexp->attribute.V.val.IntVal : mulexp->attribute.V.val.FloatVal)
-                                     / (unary_exp->attribute.T.type == Type::INT ? unary_exp->attribute.V.val.IntVal : unary_exp->attribute.V.val.FloatVal);
-        }
-    }
-
     //TODO("BinaryExp Semant");
 }
 
 void MulExp_mod::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = mulexp->attribute.V.ConstTag & unary_exp->attribute.V.ConstTag;
 
-    // 隐式类型转换
-    Type::ty leftType = mulexp->attribute.T.type;
-    Type::ty rightType = unary_exp->attribute.T.type;
-
-    // bool 转 int
-    if (leftType == Type::BOOL) {
-        mulexp->attribute.T.type = Type::INT;
+    switch(mulexp->attribute.T.type) {
+        case Type::INT:
+            switch(unary_exp->attribute.T.type) {
+                case Type::INT:    // int % int
+                    attribute.T.type = Type::INT;
+                    if (attribute.V.ConstTag) {
+                        if (unary_exp->attribute.V.val.IntVal == 0) {
+                            error_msgs.push_back("Modulo by zero in line " + 
+                                               std::to_string(line_number) + "\n");
+                            attribute.T.type = Type::VOID;
+                        } else {
+                            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal % 
+                                                   unary_exp->attribute.V.val.IntVal;
+                        }
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int % float -> error
+                case Type::BOOL:   // int % bool -> error
+                case Type::PTR:    // int % ptr -> error
+                case Type::VOID:   // int % void -> error
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for % in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::FLOAT:  // float % any -> error
+        case Type::BOOL:   // bool % any -> error
+        case Type::PTR:    // ptr % any -> error
+        case Type::VOID:   // void % any -> error
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for % in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
-    if (rightType == Type::BOOL) {
-        unary_exp->attribute.T.type = Type::INT;
-    }
-
-    // 检查运算数类型是否为void或float（模运算不支持float）
-    if (mulexp->attribute.T.type == Type::VOID || unary_exp->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("Modulo error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT;
-        return;
-    } else if (mulexp->attribute.T.type == Type::FLOAT || unary_exp->attribute.T.type == Type::FLOAT) {
-        error_msgs.push_back("Modulo error on float type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT;
-        return;
-    } else {
-        attribute.T.type = Type::INT;
-    }
-
-    // 检查除以0的情况（模运算除数为0）
-    if (unary_exp->attribute.V.ConstTag && unary_exp->attribute.V.val.IntVal == 0) {
-        error_msgs.push_back("Modulo by zero at line " + std::to_string(line_number) + "\n");
-        return;
-    }
-
-    // 常量折叠
-    attribute.V.ConstTag = mulexp->attribute.V.ConstTag && unary_exp->attribute.V.ConstTag;
-    if (attribute.V.ConstTag) {
-        attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal % unary_exp->attribute.V.val.IntVal;
-    }
-
     //TODO("BinaryExp Semant");
 }
 
 void RelExp_leq::TypeCheck() {
     relexp->TypeCheck();
     addexp->TypeCheck();
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = relexp->attribute.V.ConstTag & addexp->attribute.V.ConstTag;
 
-    // 获取左、右表达式的类型
-    Type::ty leftType = relexp->attribute.T.type;
-    Type::ty rightType = addexp->attribute.T.type;
-
-    // 初始化比较结果的类型为布尔型
-    attribute.T.type = Type::BOOL;
-
-    // 处理相同类型的情况
-    if (leftType == rightType) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则直接计算结果
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal <= addexp->attribute.V.val.IntVal;
-            } else if (leftType == Type::FLOAT) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal <= addexp->attribute.V.val.FloatVal;
-            } else if (leftType == Type::BOOL) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.BoolVal <= addexp->attribute.V.val.BoolVal;
+    switch(relexp->attribute.T.type) {
+        case Type::INT:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // int <= int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal <= 
+                                                addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int <= float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (float)relexp->attribute.V.val.IntVal <= 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int <= bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal <= 
+                                                (addexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // int <= (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for <= in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 int 和 float 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::FLOAT) || (leftType == Type::FLOAT && rightType == Type::INT)) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则进行计算
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                float leftVal = static_cast<float>(relexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = leftVal <= addexp->attribute.V.val.FloatVal;
-            } else {
-                float rightVal = static_cast<float>(addexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal <= rightVal;
+            break;
+            
+        case Type::FLOAT:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // float <= int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal <= 
+                                                (float)addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float <= float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal <= 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float <= bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal <= 
+                                                (addexp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                default:           // float <= (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for <= in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 bool 和 int 的隐式转换
-    else if ((leftType == Type::BOOL && rightType == Type::INT) || (leftType == Type::INT && rightType == Type::BOOL)) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行隐式转换并计算结果
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::BOOL) ? static_cast<int>(relexp->attribute.V.val.BoolVal) : relexp->attribute.V.val.IntVal;
-            int rightVal = (rightType == Type::BOOL) ? static_cast<int>(addexp->attribute.V.val.BoolVal) : addexp->attribute.V.val.IntVal;
-            attribute.V.val.BoolVal = leftVal <= rightVal;
-        }
-    }
-    // 处理不兼容的类型组合
-    else {
-        error_msgs.push_back("Error: Type mismatch in <= operation at line " + std::to_string(line_number));
-        attribute.T.type = Type::VOID; // 出错时设置类型为 void
+            break;
+            
+        case Type::BOOL:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // bool <= int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1 : 0) <= 
+                                                addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool <= float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) <= 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool <= bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1 : 0) <= 
+                                                (addexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // bool <= (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for <= in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) <= any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for <= in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -367,62 +749,118 @@ void RelExp_leq::TypeCheck() {
 void RelExp_lt::TypeCheck() {
     relexp->TypeCheck();
     addexp->TypeCheck();
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = relexp->attribute.V.ConstTag & addexp->attribute.V.ConstTag;
 
-    // 获取左、右表达式的类型
-    Type::ty leftType = relexp->attribute.T.type;
-    Type::ty rightType = addexp->attribute.T.type;
-
-    // 初始化比较结果的类型为布尔型
-    attribute.T.type = Type::BOOL;
-
-    // 处理相同类型的情况
-    if (leftType == rightType) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则直接计算结果
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal < addexp->attribute.V.val.IntVal;
-            } else if (leftType == Type::FLOAT) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal < addexp->attribute.V.val.FloatVal;
-            } else if (leftType == Type::BOOL) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.BoolVal < addexp->attribute.V.val.BoolVal;
-            } else {
-                error_msgs.push_back("Error: Unsupported type for < operation at line " + std::to_string(line_number));
-                attribute.T.type = Type::VOID; // 设置类型为 void 表示出错
+    switch(relexp->attribute.T.type) {
+        case Type::INT:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // int < int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal < 
+                                                addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int < float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (float)relexp->attribute.V.val.IntVal < 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int < bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal < 
+                                                (addexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // int < (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for < in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 int 和 float 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::FLOAT) || (leftType == Type::FLOAT && rightType == Type::INT)) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则进行计算
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                float leftVal = static_cast<float>(relexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = leftVal < addexp->attribute.V.val.FloatVal;
-            } else {
-                float rightVal = static_cast<float>(addexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal < rightVal;
+            break;
+            
+        case Type::FLOAT:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // float < int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal < 
+                                                (float)addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float < float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal < 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float < bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal < 
+                                                (addexp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                default:           // float < (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for < in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 bool 和 int 的隐式转换
-    else if ((leftType == Type::BOOL && rightType == Type::INT) || (leftType == Type::INT && rightType == Type::BOOL)) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行隐式转换并计算结果
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::BOOL) ? static_cast<int>(relexp->attribute.V.val.BoolVal) : relexp->attribute.V.val.IntVal;
-            int rightVal = (rightType == Type::BOOL) ? static_cast<int>(addexp->attribute.V.val.BoolVal) : addexp->attribute.V.val.IntVal;
-            attribute.V.val.BoolVal = leftVal < rightVal;
-        }
-    }
-    // 处理不兼容的类型组合
-    else {
-        error_msgs.push_back("Error: Type mismatch in < operation at line " + std::to_string(line_number));
-        attribute.T.type = Type::VOID; // 出错时设置类型为 void
+            break;
+            
+        case Type::BOOL:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // bool < int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1 : 0) < 
+                                                addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool < float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) < 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool < bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1 : 0) < 
+                                                (addexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // bool < (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for < in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) < any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for < in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -430,61 +868,118 @@ void RelExp_lt::TypeCheck() {
 void RelExp_geq::TypeCheck() {
     relexp->TypeCheck();
     addexp->TypeCheck();
-    // 获取左、右表达式的类型
-    Type::ty leftType = relexp->attribute.T.type;
-    Type::ty rightType = addexp->attribute.T.type;
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = relexp->attribute.V.ConstTag & addexp->attribute.V.ConstTag;
 
-    // 初始化比较结果的类型为布尔型
-    attribute.T.type = Type::BOOL;
-
-    // 处理相同类型的情况
-    if (leftType == rightType) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则直接计算结果
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal >= addexp->attribute.V.val.IntVal;
-            } else if (leftType == Type::FLOAT) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal >= addexp->attribute.V.val.FloatVal;
-            } else if (leftType == Type::BOOL) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.BoolVal >= addexp->attribute.V.val.BoolVal;
-            } else {
-                error_msgs.push_back("Error: Unsupported type for >= operation at line " + std::to_string(line_number));
-                attribute.T.type = Type::VOID; // 设置类型为 void 表示出错
+    switch(relexp->attribute.T.type) {
+        case Type::INT:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // int >= int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal >= 
+                                                addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int >= float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (float)relexp->attribute.V.val.IntVal >= 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int >= bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal >= 
+                                                (addexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // int >= (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for >= in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 int 和 float 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::FLOAT) || (leftType == Type::FLOAT && rightType == Type::INT)) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则进行计算
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                float leftVal = static_cast<float>(relexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = leftVal >= addexp->attribute.V.val.FloatVal;
-            } else {
-                float rightVal = static_cast<float>(addexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal >= rightVal;
+            break;
+            
+        case Type::FLOAT:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // float >= int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal >= 
+                                                (float)addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float >= float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal >= 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float >= bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal >= 
+                                                (addexp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                default:           // float >= (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for >= in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 bool 和 int 的隐式转换
-    else if ((leftType == Type::BOOL && rightType == Type::INT) || (leftType == Type::INT && rightType == Type::BOOL)) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行隐式转换并计算结果
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::BOOL) ? static_cast<int>(relexp->attribute.V.val.BoolVal) : relexp->attribute.V.val.IntVal;
-            int rightVal = (rightType == Type::BOOL) ? static_cast<int>(addexp->attribute.V.val.BoolVal) : addexp->attribute.V.val.IntVal;
-            attribute.V.val.BoolVal = leftVal >= rightVal;
-        }
-    }
-    // 处理不兼容的类型组合
-    else {
-        error_msgs.push_back("Error: Type mismatch in >= operation at line " + std::to_string(line_number));
-        attribute.T.type = Type::VOID; // 出错时设置类型为 void
+            break;
+            
+        case Type::BOOL:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // bool >= int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1 : 0) >= 
+                                                addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool >= float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) >= 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool >= bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1 : 0) >= 
+                                                (addexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // bool >= (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for >= in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) >= any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for >= in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -492,61 +987,118 @@ void RelExp_geq::TypeCheck() {
 void RelExp_gt::TypeCheck() {
     relexp->TypeCheck();
     addexp->TypeCheck();
-    // 获取左、右表达式的类型
-    Type::ty leftType = relexp->attribute.T.type;
-    Type::ty rightType = addexp->attribute.T.type;
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = relexp->attribute.V.ConstTag & addexp->attribute.V.ConstTag;
 
-    // 初始化比较结果的类型为布尔型
-    attribute.T.type = Type::BOOL;
-
-    // 处理相同类型的情况
-    if (leftType == rightType) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则直接计算结果
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal > addexp->attribute.V.val.IntVal;
-            } else if (leftType == Type::FLOAT) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal > addexp->attribute.V.val.FloatVal;
-            } else if (leftType == Type::BOOL) {
-                attribute.V.val.BoolVal = relexp->attribute.V.val.BoolVal > addexp->attribute.V.val.BoolVal;
-            } else {
-                error_msgs.push_back("Error: Unsupported type for > operation at line " + std::to_string(line_number));
-                attribute.T.type = Type::VOID; // 设置类型为 void 表示出错
+    switch(relexp->attribute.T.type) {
+        case Type::INT:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // int > int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal > 
+                                                addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int > float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (float)relexp->attribute.V.val.IntVal > 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int > bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.IntVal > 
+                                                (addexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // int > (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for > in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 int 和 float 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::FLOAT) || (leftType == Type::FLOAT && rightType == Type::INT)) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则进行计算
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                float leftVal = static_cast<float>(relexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = leftVal > addexp->attribute.V.val.FloatVal;
-            } else {
-                float rightVal = static_cast<float>(addexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal > rightVal;
+            break;
+            
+        case Type::FLOAT:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // float > int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal > 
+                                                (float)addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float > float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal > 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float > bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = relexp->attribute.V.val.FloatVal > 
+                                                (addexp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                default:           // float > (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for > in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 bool 和 int 的隐式转换
-    else if ((leftType == Type::BOOL && rightType == Type::INT) || (leftType == Type::INT && rightType == Type::BOOL)) {
-        attribute.V.ConstTag = relexp->attribute.V.ConstTag && addexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行隐式转换并计算结果
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::BOOL) ? static_cast<int>(relexp->attribute.V.val.BoolVal) : relexp->attribute.V.val.IntVal;
-            int rightVal = (rightType == Type::BOOL) ? static_cast<int>(addexp->attribute.V.val.BoolVal) : addexp->attribute.V.val.IntVal;
-            attribute.V.val.BoolVal = leftVal > rightVal;
-        }
-    }
-    // 处理不兼容的类型组合
-    else {
-        error_msgs.push_back("Error: Type mismatch in > operation at line " + std::to_string(line_number));
-        attribute.T.type = Type::VOID; // 出错时设置类型为 void
+            break;
+            
+        case Type::BOOL:
+            switch(addexp->attribute.T.type) {
+                case Type::INT:    // bool > int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1 : 0) > 
+                                                addexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool > float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) > 
+                                                addexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool > bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (relexp->attribute.V.val.BoolVal ? 1 : 0) > 
+                                                (addexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // bool > (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for > in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) > any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for > in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -554,61 +1106,118 @@ void RelExp_gt::TypeCheck() {
 void EqExp_eq::TypeCheck() {
     eqexp->TypeCheck();
     relexp->TypeCheck();
-    // 获取左、右表达式的类型
-    Type::ty leftType = eqexp->attribute.T.type;
-    Type::ty rightType = relexp->attribute.T.type;
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = eqexp->attribute.V.ConstTag & relexp->attribute.V.ConstTag;
 
-    // 初始化比较结果的类型为布尔型
-    attribute.T.type = Type::BOOL;
-
-    // 处理相同类型的情况
-    if (leftType == rightType) {
-        attribute.V.ConstTag = eqexp->attribute.V.ConstTag && relexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则直接计算结果
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                attribute.V.val.BoolVal = eqexp->attribute.V.val.IntVal == relexp->attribute.V.val.IntVal;
-            } else if (leftType == Type::FLOAT) {
-                attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal == relexp->attribute.V.val.FloatVal;
-            } else if (leftType == Type::BOOL) {
-                attribute.V.val.BoolVal = eqexp->attribute.V.val.BoolVal == relexp->attribute.V.val.BoolVal;
-            } else {
-                error_msgs.push_back("Error: Unsupported type for == operation at line " + std::to_string(line_number));
-                attribute.T.type = Type::VOID; // 设置类型为 void 表示出错
+    switch(eqexp->attribute.T.type) {
+        case Type::INT:
+            switch(relexp->attribute.T.type) {
+                case Type::INT:    // int == int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.IntVal == 
+                                                relexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int == float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (float)eqexp->attribute.V.val.IntVal == 
+                                                relexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int == bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.IntVal == 
+                                                (relexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // int == (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for == in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 int 和 float 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::FLOAT) || (leftType == Type::FLOAT && rightType == Type::INT)) {
-        attribute.V.ConstTag = eqexp->attribute.V.ConstTag && relexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则进行计算
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                float leftVal = static_cast<float>(eqexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = leftVal == relexp->attribute.V.val.FloatVal;
-            } else {
-                float rightVal = static_cast<float>(relexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal == rightVal;
+            break;
+            
+        case Type::FLOAT:
+            switch(relexp->attribute.T.type) {
+                case Type::INT:    // float == int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal == 
+                                                (float)relexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float == float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal == 
+                                                relexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float == bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal == 
+                                                (relexp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                default:           // float == (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for == in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 bool 和 int 的隐式转换
-    else if ((leftType == Type::BOOL && rightType == Type::INT) || (leftType == Type::INT && rightType == Type::BOOL)) {
-        attribute.V.ConstTag = eqexp->attribute.V.ConstTag && relexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行隐式转换并计算结果
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::BOOL) ? static_cast<int>(eqexp->attribute.V.val.BoolVal) : eqexp->attribute.V.val.IntVal;
-            int rightVal = (rightType == Type::BOOL) ? static_cast<int>(relexp->attribute.V.val.BoolVal) : relexp->attribute.V.val.IntVal;
-            attribute.V.val.BoolVal = leftVal == rightVal;
-        }
-    }
-    // 处理不兼容的类型组合
-    else {
-        error_msgs.push_back("Error: Type mismatch in == operation at line " + std::to_string(line_number));
-        attribute.T.type = Type::VOID; // 出错时设置类型为 void
+            break;
+            
+        case Type::BOOL:
+            switch(relexp->attribute.T.type) {
+                case Type::INT:    // bool == int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (eqexp->attribute.V.val.BoolVal ? 1 : 0) == 
+                                                relexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool == float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (eqexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) == 
+                                                relexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool == bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (eqexp->attribute.V.val.BoolVal ? 1 : 0) == 
+                                                (relexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // bool == (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for == in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) == any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for == in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -616,61 +1225,118 @@ void EqExp_eq::TypeCheck() {
 void EqExp_neq::TypeCheck() {
     eqexp->TypeCheck();
     relexp->TypeCheck();
-    // 获取左、右表达式的类型
-    Type::ty leftType = eqexp->attribute.T.type;
-    Type::ty rightType = relexp->attribute.T.type;
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = eqexp->attribute.V.ConstTag & relexp->attribute.V.ConstTag;
 
-    // 初始化比较结果的类型为布尔型
-    attribute.T.type = Type::BOOL;
-
-    // 处理相同类型的情况
-    if (leftType == rightType) {
-        attribute.V.ConstTag = eqexp->attribute.V.ConstTag && relexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则直接计算结果
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                attribute.V.val.BoolVal = eqexp->attribute.V.val.IntVal != relexp->attribute.V.val.IntVal;
-            } else if (leftType == Type::FLOAT) {
-                attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal != relexp->attribute.V.val.FloatVal;
-            } else if (leftType == Type::BOOL) {
-                attribute.V.val.BoolVal = eqexp->attribute.V.val.BoolVal != relexp->attribute.V.val.BoolVal;
-            } else {
-                error_msgs.push_back("Error: Unsupported type for != operation at line " + std::to_string(line_number));
-                attribute.T.type = Type::VOID; // 设置类型为 void 表示出错
+    switch(eqexp->attribute.T.type) {
+        case Type::INT:
+            switch(relexp->attribute.T.type) {
+                case Type::INT:    // int != int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.IntVal != 
+                                                relexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int != float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (float)eqexp->attribute.V.val.IntVal != 
+                                                relexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int != bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.IntVal != 
+                                                (relexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // int != (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for != in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 int 和 float 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::FLOAT) || (leftType == Type::FLOAT && rightType == Type::INT)) {
-        attribute.V.ConstTag = eqexp->attribute.V.ConstTag && relexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则进行计算
-        if (attribute.V.ConstTag) {
-            if (leftType == Type::INT) {
-                float leftVal = static_cast<float>(eqexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = leftVal != relexp->attribute.V.val.FloatVal;
-            } else {
-                float rightVal = static_cast<float>(relexp->attribute.V.val.IntVal);
-                attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal != rightVal;
+            break;
+            
+        case Type::FLOAT:
+            switch(relexp->attribute.T.type) {
+                case Type::INT:    // float != int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal != 
+                                                (float)relexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float != float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal != 
+                                                relexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float != bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = eqexp->attribute.V.val.FloatVal != 
+                                                (relexp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
+                    }
+                    break;
+                    
+                default:           // float != (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for != in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
             }
-        }
-    }
-    // 处理 bool 和 int 的隐式转换
-    else if ((leftType == Type::BOOL && rightType == Type::INT) || (leftType == Type::INT && rightType == Type::BOOL)) {
-        attribute.V.ConstTag = eqexp->attribute.V.ConstTag && relexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行隐式转换并计算结果
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::BOOL) ? static_cast<int>(eqexp->attribute.V.val.BoolVal) : eqexp->attribute.V.val.IntVal;
-            int rightVal = (rightType == Type::BOOL) ? static_cast<int>(relexp->attribute.V.val.BoolVal) : relexp->attribute.V.val.IntVal;
-            attribute.V.val.BoolVal = leftVal != rightVal;
-        }
-    }
-    // 处理不兼容的类型组合
-    else {
-        error_msgs.push_back("Error: Type mismatch in != operation at line " + std::to_string(line_number));
-        attribute.T.type = Type::VOID; // 出错时设置类型为 void
+            break;
+            
+        case Type::BOOL:
+            switch(relexp->attribute.T.type) {
+                case Type::INT:    // bool != int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (eqexp->attribute.V.val.BoolVal ? 1 : 0) != 
+                                                relexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool != float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (eqexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) != 
+                                                relexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool != bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (eqexp->attribute.V.val.BoolVal ? 1 : 0) != 
+                                                (relexp->attribute.V.val.BoolVal ? 1 : 0);
+                    }
+                    break;
+                    
+                default:           // bool != (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for != in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) != any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for != in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -678,68 +1344,118 @@ void EqExp_neq::TypeCheck() {
 void LAndExp_and::TypeCheck() {
     landexp->TypeCheck();
     eqexp->TypeCheck();
-    // 获取左右操作数的类型
-    Type::ty leftType = landexp->attribute.T.type;
-    Type::ty rightType = eqexp->attribute.T.type;
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = landexp->attribute.V.ConstTag & eqexp->attribute.V.ConstTag;
 
-    // 初始化结果类型为布尔型
-    attribute.T.type = Type::BOOL;
-
-    // 处理 bool 类型
-    if (leftType == Type::BOOL && rightType == Type::BOOL) {
-        attribute.V.ConstTag = landexp->attribute.V.ConstTag && eqexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则直接计算结果
-        if (attribute.V.ConstTag) {
-            attribute.V.val.BoolVal = landexp->attribute.V.val.BoolVal && eqexp->attribute.V.val.BoolVal;
-        }
-    }
-    // 处理 int 和 bool 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::BOOL) || (leftType == Type::BOOL && rightType == Type::INT)) {
-        attribute.V.ConstTag = landexp->attribute.V.ConstTag && eqexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行隐式转换并计算结果
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::BOOL) ? static_cast<int>(landexp->attribute.V.val.BoolVal) : landexp->attribute.V.val.IntVal;
-            int rightVal = (rightType == Type::BOOL) ? static_cast<int>(eqexp->attribute.V.val.BoolVal) : eqexp->attribute.V.val.IntVal;
-            attribute.V.val.BoolVal = (leftVal != 0) && (rightVal != 0);
-        }
-    }
-    // 处理 int 和 float 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::FLOAT) || (leftType == Type::FLOAT && rightType == Type::INT)) {
-        attribute.V.ConstTag = landexp->attribute.V.ConstTag && eqexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则进行计算
-        if (attribute.V.ConstTag) {
-            float leftVal = (leftType == Type::INT) ? static_cast<float>(landexp->attribute.V.val.IntVal) : landexp->attribute.V.val.FloatVal;
-            float rightVal = (rightType == Type::INT) ? static_cast<float>(eqexp->attribute.V.val.IntVal) : eqexp->attribute.V.val.FloatVal;
-            attribute.V.val.BoolVal = (leftVal != 0.0f) && (rightVal != 0.0f);
-        }
-    }
-    // 处理 int 类型
-    else if (leftType == Type::INT && rightType == Type::INT) {
-        attribute.V.ConstTag = landexp->attribute.V.ConstTag && eqexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行计算
-        if (attribute.V.ConstTag) {
-            attribute.V.val.BoolVal = (landexp->attribute.V.val.IntVal != 0) && (eqexp->attribute.V.val.IntVal != 0);
-        }
-    }
-    // 处理不兼容的类型组合
-    else if ((leftType == Type::INT && rightType == Type::INT) || (leftType == Type::FLOAT && rightType == Type::FLOAT)) {
-        attribute.V.ConstTag = landexp->attribute.V.ConstTag && eqexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行计算
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::INT) ? landexp->attribute.V.val.IntVal : static_cast<int>(landexp->attribute.V.val.FloatVal);
-            int rightVal = (rightType == Type::INT) ? eqexp->attribute.V.val.IntVal : static_cast<int>(eqexp->attribute.V.val.FloatVal);
-            attribute.V.val.BoolVal = (leftVal != 0) && (rightVal != 0);
-        }
-    }
-    // 处理不兼容的类型组合
-    else {
-        error_msgs.push_back("Error: Both operands of && must be of type bool at line " + std::to_string(line_number));
-        attribute.T.type = Type::VOID; // 出错时设置类型为 void
+    switch(landexp->attribute.T.type) {
+        case Type::INT:
+            switch(eqexp->attribute.T.type) {
+                case Type::INT:    // int && int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = landexp->attribute.V.val.IntVal && 
+                                                eqexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int && float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (float)landexp->attribute.V.val.IntVal && 
+                                                eqexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int && bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = landexp->attribute.V.val.IntVal && 
+                                                eqexp->attribute.V.val.BoolVal;
+                    }
+                    break;
+                    
+                default:           // int && (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for && in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::FLOAT:
+            switch(eqexp->attribute.T.type) {
+                case Type::INT:    // float && int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = landexp->attribute.V.val.FloatVal && 
+                                                (float)eqexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float && float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = landexp->attribute.V.val.FloatVal && 
+                                                eqexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float && bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = landexp->attribute.V.val.FloatVal && 
+                                                eqexp->attribute.V.val.BoolVal;
+                    }
+                    break;
+                    
+                default:           // float && (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for && in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::BOOL:
+            switch(eqexp->attribute.T.type) {
+                case Type::INT:    // bool && int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = landexp->attribute.V.val.BoolVal && 
+                                                eqexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool && float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = landexp->attribute.V.val.BoolVal && 
+                                                eqexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool && bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = landexp->attribute.V.val.BoolVal && 
+                                                eqexp->attribute.V.val.BoolVal;
+                    }
+                    break;
+                    
+                default:           // bool && (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for && in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) && any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for && in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -747,57 +1463,118 @@ void LAndExp_and::TypeCheck() {
 void LOrExp_or::TypeCheck() {
     lorexp->TypeCheck();
     landexp->TypeCheck();
-    // 获取左右操作数的类型
-    Type::ty leftType = lorexp->attribute.T.type;
-    Type::ty rightType = landexp->attribute.T.type;
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = lorexp->attribute.V.ConstTag & landexp->attribute.V.ConstTag;
 
-    // 初始化结果类型为布尔型
-    attribute.T.type = Type::BOOL;
-
-    // 处理 bool 类型
-    if (leftType == Type::BOOL && rightType == Type::BOOL) {
-        attribute.V.ConstTag = lorexp->attribute.V.ConstTag && landexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则直接计算结果
-        if (attribute.V.ConstTag) {
-            attribute.V.val.BoolVal = lorexp->attribute.V.val.BoolVal || landexp->attribute.V.val.BoolVal;
-        }
-    }
-    // 处理 int 和 bool 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::BOOL) || (leftType == Type::BOOL && rightType == Type::INT)) {
-        attribute.V.ConstTag = lorexp->attribute.V.ConstTag && landexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行隐式转换并计算结果
-        if (attribute.V.ConstTag) {
-            int leftVal = (leftType == Type::BOOL) ? static_cast<int>(lorexp->attribute.V.val.BoolVal) : lorexp->attribute.V.val.IntVal;
-            int rightVal = (rightType == Type::BOOL) ? static_cast<int>(landexp->attribute.V.val.BoolVal) : landexp->attribute.V.val.IntVal;
-            attribute.V.val.BoolVal = (leftVal != 0) || (rightVal != 0); // 非零视为 true
-        }
-    }
-    // 处理 int 和 float 的隐式转换
-    else if ((leftType == Type::INT && rightType == Type::FLOAT) || (leftType == Type::FLOAT && rightType == Type::INT)) {
-        attribute.V.ConstTag = lorexp->attribute.V.ConstTag && landexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，则进行计算
-        if (attribute.V.ConstTag) {
-            float leftVal = (leftType == Type::INT) ? static_cast<float>(lorexp->attribute.V.val.IntVal) : lorexp->attribute.V.val.FloatVal;
-            float rightVal = (rightType == Type::INT) ? static_cast<float>(landexp->attribute.V.val.IntVal) : landexp->attribute.V.val.FloatVal;
-            attribute.V.val.BoolVal = (leftVal != 0.0f) || (rightVal != 0.0f); // 非零视为 true
-        }
-    }
-    // 处理 int 类型
-    else if (leftType == Type::INT && rightType == Type::INT) {
-        attribute.V.ConstTag = lorexp->attribute.V.ConstTag && landexp->attribute.V.ConstTag;
-
-        // 如果是常量表达式，直接进行计算
-        if (attribute.V.ConstTag) {
-            attribute.V.val.BoolVal = (lorexp->attribute.V.val.IntVal != 0) || (landexp->attribute.V.val.IntVal != 0);
-        }
-    }
-    // 处理不兼容的类型组合
-    else {
-        error_msgs.push_back("Error: Both operands of || must be of type bool at line " + std::to_string(line_number));
-        attribute.T.type = Type::VOID; // 出错时设置类型为 void
+    switch(lorexp->attribute.T.type) {
+        case Type::INT:
+            switch(landexp->attribute.T.type) {
+                case Type::INT:    // int || int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = lorexp->attribute.V.val.IntVal || 
+                                                landexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // int || float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = (float)lorexp->attribute.V.val.IntVal || 
+                                                landexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // int || bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = lorexp->attribute.V.val.IntVal || 
+                                                landexp->attribute.V.val.BoolVal;
+                    }
+                    break;
+                    
+                default:           // int || (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for || in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::FLOAT:
+            switch(landexp->attribute.T.type) {
+                case Type::INT:    // float || int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = lorexp->attribute.V.val.FloatVal || 
+                                                (float)landexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // float || float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = lorexp->attribute.V.val.FloatVal || 
+                                                landexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // float || bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = lorexp->attribute.V.val.FloatVal || 
+                                                landexp->attribute.V.val.BoolVal;
+                    }
+                    break;
+                    
+                default:           // float || (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for || in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        case Type::BOOL:
+            switch(landexp->attribute.T.type) {
+                case Type::INT:    // bool || int
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = lorexp->attribute.V.val.BoolVal || 
+                                                landexp->attribute.V.val.IntVal;
+                    }
+                    break;
+                    
+                case Type::FLOAT:  // bool || float
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = lorexp->attribute.V.val.BoolVal || 
+                                                landexp->attribute.V.val.FloatVal;
+                    }
+                    break;
+                    
+                case Type::BOOL:   // bool || bool
+                    attribute.T.type = Type::BOOL;
+                    if (attribute.V.ConstTag) {
+                        attribute.V.val.BoolVal = lorexp->attribute.V.val.BoolVal || 
+                                                landexp->attribute.V.val.BoolVal;
+                    }
+                    break;
+                    
+                default:           // bool || (ptr/void)
+                    attribute.T.type = Type::VOID;
+                    error_msgs.push_back("Invalid operands for || in line " + 
+                                       std::to_string(line_number) + "\n");
+                    break;
+            }
+            break;
+            
+        default:                   // (ptr/void) || any
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operands for || in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
     //TODO("BinaryExp Semant");
 }
@@ -810,235 +1587,236 @@ void ConstExp::TypeCheck() {
     }
 }
 
+
+int GetArrayIntVal(VarAttribute &val, std::vector<int> &indexs) {
+    //[i] + i
+    //[i][j] + i*dim[1] + j
+    //[i][j][k] + i*dim[1]*dim[2] + j*dim[2] + k
+    //[i][j][k][w] + i*dim[1]*dim[2]*dim[3] + j*dim[2]*dim[3] + k*dim[3] + w
+    int idx = 0;
+    for (int curIndex = 0; curIndex < indexs.size(); curIndex++) {
+        idx *= val.dims[curIndex];
+        idx += indexs[curIndex];
+    }
+    return val.IntInitVals[idx];
+}
+
+float GetArrayFloatVal(VarAttribute &val, std::vector<int> &indexs) {
+    int idx = 0;
+    for (int curIndex = 0; curIndex < indexs.size(); curIndex++) {
+        idx *= val.dims[curIndex];
+        idx += indexs[curIndex];
+    }
+    return val.FloatInitVals[idx];
+}
+
 void Lval::TypeCheck() { 
     is_left = false;
-    VarAttribute val;
-    // 检查变量是否在本地作用域中声明
-    auto global_entry = semant_table.GlobalTable.find(name);
-    if (global_entry != semant_table.GlobalTable.end()) {
-        // 如果在全局作用域中找到变量，则直接使用全局定义
-        scope = 0; // 设置作用域为全局作用域
-        attribute.V.ConstTag = global_entry->second.ConstTag; // 使用全局常量标记
-        val = global_entry->second; // 从全局表中获取变量属性
-    } else {
-        // 如果全局表中没有该变量，检查本地作用域
-        int local_scope = semant_table.symbol_table.lookup_scope(name);
-        if (local_scope != -1) {
-            // 变量在本地作用域中
-            scope = local_scope;
-            attribute.V.ConstTag = false; // 本地变量默认不可变
-            val = semant_table.symbol_table.lookup_val(name);
-        } else {
-            // 如果在任何作用域中都未找到，记录错误并返回
-            error_msgs.push_back("Error: Variable '" + name->get_string() + "' is not defined at line " + std::to_string(line_number) + "\n");
-            attribute.T.type = Type::UNDEFINED;
-            return;
-        }
-    }
-
-    // 设置类型信息
-    attribute.T.type = val.type;
-    attribute.V.ConstTag = val.ConstTag;
-    /*// 检查是否为常量，常量不能作为左值
-    if (attribute.V.ConstTag) {
-        error_msgs.push_back("Error: Constant '" + name->get_string() + "' cannot be assigned to at line " + std::to_string(line_number) + "\n");
-        return;
-    }*/
-    // 如果是常量，设置其具体值
-    if (attribute.V.ConstTag) {
-        if (val.dims.empty()) { // 标量变量
-            if (attribute.T.type == Type::INT && !val.IntInitVals.empty()) {
-                attribute.V.val.IntVal = val.IntInitVals[0];
-            } else if (attribute.T.type == Type::FLOAT && !val.FloatInitVals.empty()) {
-                attribute.V.val.FloatVal = val.FloatInitVals[0];
-            }
-        } else {
-            // 数组常量暂不支持折叠，设置为不可变
-            attribute.V.ConstTag = false;
-        }
-    } else {
-        // 非常量变量
-        attribute.V.ConstTag = false;
-    }
-
-    // 数组维度检查
+    std::vector<int> arrayindexs;
+    bool arrayindexConstTag = true;
     if (dims != nullptr) {
-        if (val.dims.size() != dims->size()) {
-            error_msgs.push_back("Error: Array dimension mismatch for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-        } else {
-            for (auto dim : *dims) {
-                dim->TypeCheck();
-                if (dim->attribute.T.type != Type::INT) {
-                    error_msgs.push_back("Error: Array index must be a constant integer for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-                }
+        for (auto d : *dims) {
+            d->TypeCheck();
+            if (d->attribute.T.type == Type::VOID) {
+                error_msgs.push_back("Array Dim can not be void in line " + std::to_string(line_number) + "\n");
+            } else if (d->attribute.T.type == Type::FLOAT) {
+                error_msgs.push_back("Array Dim can not be float in line " + std::to_string(line_number) + "\n");
+            }
+            arrayindexs.push_back(d->attribute.V.val.IntVal);
+            arrayindexConstTag &= d->attribute.V.ConstTag;
+        }
+    }
+
+    VarAttribute val = semant_table.symbol_table.lookup_val(name);
+    if (val.type != Type::VOID) {    // local var
+        scope = semant_table.symbol_table.lookup_scope(name);
+    } else if (semant_table.GlobalTable.find(name) != semant_table.GlobalTable.end()) {    // global var
+        val = semant_table.GlobalTable[name];
+        scope = 0;
+    } else {
+        error_msgs.push_back("Undefined var in line " + std::to_string(line_number) + "\n");
+        return;
+    }
+
+    if (arrayindexs.size() == val.dims.size()) {    // lval is a number(not a array)
+        attribute.V.ConstTag = val.ConstTag & arrayindexConstTag;
+        attribute.T.type = val.type;
+        if (attribute.V.ConstTag) {
+            if (attribute.T.type == Type::INT) {
+                attribute.V.val.IntVal = GetArrayIntVal(val, arrayindexs);
+            } else if (attribute.T.type == Type::FLOAT) {
+                attribute.V.val.FloatVal = GetArrayFloatVal(val, arrayindexs);
             }
         }
-    } else if (!val.dims.empty() && !isArrayContext) {
-        error_msgs.push_back("Error: Array variable '" + name->get_string() + "' used without index at line " + std::to_string(line_number) + "\n");
+    } else if (arrayindexs.size() < val.dims.size()) {    // lval is a array
+        attribute.V.ConstTag = false;
+        attribute.T.type = Type::PTR;
+    } else {
+        error_msgs.push_back("Array is unmatched in line " + std::to_string(line_number) + "\n");
     }
     //TODO("Lval Semant"); 
 }
 
 void FuncRParams::TypeCheck() { 
-    auto param_vector = *params;
-    for (auto param : param_vector) {
-        param->TypeCheck();
+    if (params != nullptr) {
+        for (auto param : *params) {
+            param->TypeCheck();
+            if (param->attribute.T.type == Type::VOID) {
+                error_msgs.push_back("Function parameter cannot be void type in line " + 
+                    std::to_string(param->GetLineNumber()) + "\n");
+            }
+        }
     }
-    
     //TODO("FuncRParams Semant"); 
 }
 
-// 辅助函数，将 Type::ty 枚举转换为字符串表示
-std::string type_to_string(Type::ty type) {
-    switch (type) {
-        case Type::VOID: return "void";
-        case Type::INT: return "int";
-        case Type::FLOAT: return "float";
-        case Type::BOOL: return "bool";
-        case Type::PTR: return "ptr";
-        case Type::DOUBLE: return "double";
-        default: return "unknown";
-    }
-}
-
 void Func_call::TypeCheck() {
-    isArrayContext = true;
-    // 获取函数的定义
-    auto it = semant_table.FunctionTable.find(name);
-    if (it == semant_table.FunctionTable.end()) {
-        error_msgs.push_back("Error: Function '" + name->get_string() +
-                             "' is not defined at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT; // 假设返回类型为 int，继续分析
+    // 1. 检查和处理参数
+    if (funcr_params != nullptr) {
+        funcr_params->TypeCheck();
+    }
+    
+    int param_count = (funcr_params == nullptr) ? 0 : 
+        ((FuncRParams*)funcr_params)->params->size();
+
+    // 2. 处理内置函数putf
+    if (name->get_string() == "putf") {
+        if (param_count < 1) {
+            error_msgs.push_back("putf requires at least one parameter in line " + 
+                std::to_string(line_number) + "\n");
+        }
         return;
     }
 
-    auto func_def = it->second; // 获取函数定义
-
-    // 获取形参数量
-    size_t formals_count = func_def->formals->size();
-
-    // 获取实参数量
-    size_t params_count = 0;
-    FuncRParams* func_r_params = nullptr;
-    if (funcr_params != nullptr) {
-        func_r_params = static_cast<FuncRParams*>(funcr_params);
-        if (func_r_params->params != nullptr) {
-            params_count = func_r_params->params->size();
-        }
+    // 3. 检查函数定义
+    auto func_it = semant_table.FunctionTable.find(name);
+    if (func_it == semant_table.FunctionTable.end()) {
+        error_msgs.push_back("Undefined function " + name->get_string() + 
+            " in line " + std::to_string(line_number) + "\n");
+        return;
     }
 
-    // 检查实参与形参数量是否匹配
-    if (params_count != formals_count) {
-        error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+    // 4. 检查参数个数匹配
+    FuncDef func_def = func_it->second;
+    if (func_def->formals->size() != param_count) {
+        error_msgs.push_back("Parameter count mismatch for function " + name->get_string() + 
+            " in line " + std::to_string(line_number) + "\n");
     }
 
-    // 检查实参类型与形参类型是否一致
-    size_t min_count = std::min(params_count, formals_count);
-    for (size_t i = 0; i < min_count; ++i) {
-        // 对实参进行类型检查
-        (*func_r_params->params)[i]->TypeCheck(); // 访问实际参数
-
-        auto expected_type = func_def->formals->at(i)->type_decl; // 获取形参的类型
-        auto actual_type = (*func_r_params->params)[i]->attribute.T;
-
-        // 隐式类型转换
-        if (actual_type.type == Type::BOOL && expected_type == Type::INT) {
-            actual_type.type = Type::INT;
-        } else if (actual_type.type == Type::INT && expected_type == Type::FLOAT) {
-            actual_type.type = Type::FLOAT;
-        } else if (actual_type.type == Type::BOOL && expected_type == Type::FLOAT) {
-            actual_type.type = Type::FLOAT;
-        }
-
-        // 检查实参类型是否与形参类型一致
-        if (actual_type.type != expected_type) {
-            error_msgs.push_back("Error: Type mismatch for argument " + std::to_string(i + 1) +
-                                 " in function call '" + name->get_string() + "' (expected " +
-                                 type_to_string(expected_type) + ", got " +
-                                 type_to_string(actual_type.type) + ") at line " +
-                                 std::to_string(line_number) + "\n");
-        }
-    }
-
-    // 设置返回类型为函数定义的返回类型
+    // 5. 设置返回值类型
     attribute.T.type = func_def->return_type;
-
-    isArrayContext = false; 
+    attribute.V.ConstTag = false;
 }
 
 void UnaryExp_plus::TypeCheck() { 
+    unary_exp->TypeCheck();
+    
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = unary_exp->attribute.V.ConstTag;
 
-    // 检查运算数类型是否为 void
-    unary_exp->TypeCheck();  // 确保获取运算数的类型
-
-    if (unary_exp->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("UnaryExp_plus error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT; // 这里返回类型也可以为 void，但通常加法结果为 int
-    } else {
-        attribute.T.type = unary_exp->attribute.T.type; // 设置为运算数的类型
+    switch(unary_exp->attribute.T.type) {
+        case Type::INT:    // +int
+            attribute.T.type = Type::INT;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.IntVal = unary_exp->attribute.V.val.IntVal;
+            }
+            break;
+            
+        case Type::FLOAT:  // +float
+            attribute.T.type = Type::FLOAT;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.FloatVal = unary_exp->attribute.V.val.FloatVal;
+            }
+            break;
+            
+        case Type::BOOL:   // +bool -> int
+            attribute.T.type = Type::INT;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.IntVal = unary_exp->attribute.V.val.BoolVal ? 1 : 0;
+            }
+            break;
+            
+        default:           // +(ptr/void)
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operand for unary + in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
     }
-
-    // 常量折叠
-    attribute.V = unary_exp->attribute.V; // 直接赋值
-    //TODO("UnaryExp Semant"); 
+    //TODO("unary_exp Semant"); 
 }
 
 void UnaryExp_neg::TypeCheck() { 
-    // 检查运算数类型是否为 void
     unary_exp->TypeCheck();
-
-    if (unary_exp->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("UnaryExp_neg error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::INT; // 这里可以设置为 void，但通常返回类型为 int
-    } else {
-        attribute.T.type = unary_exp->attribute.T.type; // 设置为运算数的类型
-    }
-
-    // 常量折叠
+    
+    attribute.line_number = line_number;
     attribute.V.ConstTag = unary_exp->attribute.V.ConstTag;
-    if (attribute.V.ConstTag) {
-        if (attribute.T.type == Type::INT) {
-            attribute.V.val.IntVal = -unary_exp->attribute.V.val.IntVal; // 处理 int 类型
-        } else if (attribute.T.type == Type::FLOAT) {
-            attribute.V.val.FloatVal = -unary_exp->attribute.V.val.FloatVal; // 处理 float 类型
-        }
-    }
 
-    //TODO("UnaryExp Semant"); 
+    switch(unary_exp->attribute.T.type) {
+        case Type::INT:    // -int
+            attribute.T.type = Type::INT;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.IntVal = -unary_exp->attribute.V.val.IntVal;
+            }
+            break;
+            
+        case Type::FLOAT:  // -float
+            attribute.T.type = Type::FLOAT;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.FloatVal = -unary_exp->attribute.V.val.FloatVal;
+            }
+            break;
+            
+        case Type::BOOL:   // -bool -> -int
+            attribute.T.type = Type::INT;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.IntVal = -(unary_exp->attribute.V.val.BoolVal ? 1 : 0);
+            }
+            break;
+            
+        default:           // -(ptr/void)
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operand for unary - in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
+    }
+    //TODO("unary_exp Semant"); 
 }
 
 void UnaryExp_not::TypeCheck() { 
-    // 检查运算数类型
     unary_exp->TypeCheck();
-
-    // 检查运算数是否为 void
-    if (unary_exp->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("UnaryExp_not error on void type at line " + std::to_string(line_number) + "\n");
-        attribute.T.type = Type::BOOL; // 逻辑非的结果类型应为 bool
-    } else {
-        // 对于 int 类型的逻辑非处理
-        if (unary_exp->attribute.T.type == Type::INT) {
-            attribute.T.type = Type::BOOL; // 逻辑非运算结果为 bool
-        } else if (unary_exp->attribute.T.type == Type::BOOL) {
-            attribute.T.type = Type::BOOL; // 保持 bool 类型
-        } else {
-            error_msgs.push_back("Error: Unsupported type for unary ! operator at line " + std::to_string(line_number));
-            attribute.T.type = Type::VOID; // 设置为 void
-            return;
-        }
-    }
-
-    // 常量折叠
-    attribute.V.ConstTag = unary_exp->attribute.V.ConstTag;
-    if (attribute.V.ConstTag) {
-        if (unary_exp->attribute.T.type == Type::INT) {
-            attribute.V.val.BoolVal = (unary_exp->attribute.V.val.IntVal == 0) ? true : false; // 将 int 转为 bool
-        } else if (unary_exp->attribute.T.type == Type::BOOL) {
-            attribute.V.val.BoolVal = !unary_exp->attribute.V.val.BoolVal; // 直接取反
-        }
-    }
     
-    //TODO("UnaryExp Semant"); 
+    attribute.line_number = line_number;
+    attribute.V.ConstTag = unary_exp->attribute.V.ConstTag;
+
+    switch(unary_exp->attribute.T.type) {
+        case Type::INT:    // !int
+            attribute.T.type = Type::BOOL;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.BoolVal = !unary_exp->attribute.V.val.IntVal;
+            }
+            break;
+            
+        case Type::FLOAT:  // !float
+            attribute.T.type = Type::BOOL;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.BoolVal = !unary_exp->attribute.V.val.FloatVal;
+            }
+            break;
+            
+        case Type::BOOL:   // !bool
+            attribute.T.type = Type::BOOL;
+            if (attribute.V.ConstTag) {
+                attribute.V.val.BoolVal = !unary_exp->attribute.V.val.BoolVal;
+            }
+            break;
+            
+        default:           // !(ptr/void)
+            attribute.T.type = Type::VOID;
+            error_msgs.push_back("Invalid operand for unary ! in line " + 
+                               std::to_string(line_number) + "\n");
+            break;
+    }
+    //TODO("unary_exp Semant"); 
 }
 
 void IntConst::TypeCheck() {
@@ -1053,7 +1831,13 @@ void FloatConst::TypeCheck() {
     attribute.V.val.FloatVal = val;
 }
 
-void StringConst::TypeCheck() { //TODO("StringConst Semant"); 
+void StringConst::TypeCheck() { 
+    attribute.T.type = Type::PTR;
+    GlobalStrCnt += 1;
+    auto GlobalStrI = new GlobalStringConstInstruction(str->get_string(), ".str" + std::to_string(GlobalStrCnt));
+    llvmIR.global_def.push_back(GlobalStrI);
+    semant_table.GlobalStrTable[str] = GlobalStrCnt;
+    //TODO("StringConst Semant"); 
 }
 
 void PrimaryExp_branch::TypeCheck() {
@@ -1141,26 +1925,28 @@ void if_stmt::TypeCheck() {
 }
 
 void while_stmt::TypeCheck() {
-    inside_loop++;
     Cond->TypeCheck();
+
     if (Cond->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("while cond type is invalid " + std::to_string(Cond->GetLineNumber()) + "\n");
+        error_msgs.push_back("while cond type is invalid " + std::to_string(line_number) + "\n");
     }
+
+    InWhileCount++;
     body->TypeCheck();
-    inside_loop--;
+    InWhileCount--;
     //TODO("WhileStmt Semant"); 
 }
 
 void continue_stmt::TypeCheck() {
-    if (!inside_loop) {
-        error_msgs.push_back("continue语句不在循环内 " + std::to_string(line_number) + "\n");
-    } 
+    if (!InWhileCount) {
+        error_msgs.push_back("continue is not in while stmt in line " + std::to_string(line_number) + "\n");
+    }
     //TODO("ContinueStmt Semant"); 
 }
 
 void break_stmt::TypeCheck() { 
-    if (!inside_loop) {
-        error_msgs.push_back("break语句不在循环内 " + std::to_string(line_number) + "\n");
+    if (!InWhileCount) {
+        error_msgs.push_back("break is not in while stmt in line " + std::to_string(line_number) + "\n");
     }
     //TODO("BreakStmt Semant"); 
 }
@@ -1174,291 +1960,6 @@ void return_stmt::TypeCheck() {
 }
 
 void return_stmt_void::TypeCheck() {}
-
-void ConstInitVal::TypeCheck() { 
-    for (auto init_val : *initval) {
-        init_val->TypeCheck();
-        
-        // 检查每个初始化值是否为常量表达式
-        if (!init_val->attribute.V.ConstTag) {
-            error_msgs.push_back("Initializer must be a constant expression in ConstInitVal at line " + std::to_string(line_number) + "\n");
-        }
-    }
-    //TODO("ConstInitVal Semant"); 
-}
-
-void ConstInitVal_exp::TypeCheck() { 
-    if (exp == nullptr) {
-        return;
-    }
-    exp->TypeCheck();
-    attribute = exp->attribute;
-    // 检查表达式是否为常量
-    if (exp->attribute.V.ConstTag == false) {
-        error_msgs.push_back("Initializer expression must be a constant in ConstInitVal_exp at line " + std::to_string(line_number) + "\n");
-    }
-    //TODO("ConstInitValExp Semant"); 
-}
-
-void VarInitVal::TypeCheck() { 
-    for (auto init_val : *initval) {
-        init_val->TypeCheck();
-        
-        /*// 检查每个初始化值的类型是否匹配变量的类型（例如int、float等）
-        if (init_val->attribute.T.type != attribute.T.type) {
-            error_msgs.push_back("Error: Type mismatch in VarInitVal initializer at line " + std::to_string(line_number) + "\n");
-        }*/
-    }
-    //TODO("VarInitVal Semant"); 
-}
-
-void VarInitVal_exp::TypeCheck() { 
-    if (exp == nullptr) {
-        return;
-    }
-    exp->TypeCheck();
-    attribute = exp->attribute;
-    // 检查初始化值的类型是否为 void
-    if (attribute.T.type == Type::VOID) {
-        error_msgs.push_back("Error: Variable initializer expression cannot be of type void at line " + std::to_string(line_number) + "\n");
-    }
-    //TODO("VarInitValExp Semant"); 
-}
-
-void VarDef_no_init::TypeCheck() { 
-    // 检查数组维度是否合法
-    if (dims != nullptr) {
-        for (auto d : *dims) {
-            d->TypeCheck();
-            if (!d->attribute.V.ConstTag) {
-                error_msgs.push_back("Array dimension must be a constant expression for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-            }
-            if (d->attribute.T.type == Type::FLOAT) {
-                error_msgs.push_back("Array dimension cannot be of type float for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-            }
-        }
-    }
-
-    // 将未初始化的变量添加到符号表
-    VarAttribute var_attr;
-    var_attr.type = attribute.T.type;
-    var_attr.ConstTag = false;
-    if (dims != nullptr) {
-        for (auto d : *dims) {
-            var_attr.dims.push_back(d->attribute.V.val.IntVal); // 存储数组维度
-        }
-    }
-
-    // 检查是否在当前作用域中重复定义
-    if (semant_table.symbol_table.lookup_scope(name) == semant_table.symbol_table.get_current_scope()) {
-        error_msgs.push_back("Variable '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
-    } else {
-        semant_table.symbol_table.add_Symbol(name, var_attr);
-    }
-    //TODO("VarDefNoInit Semant"); 
-}
-
-void VarDef::TypeCheck() {
-    int current_scope = semant_table.symbol_table.get_current_scope();
-    // 检查是否在当前作用域中重复定义
-    if (semant_table.symbol_table.lookup_scope(name) == current_scope)  {
-        // 错误：全局作用域中已有同名变量
-        error_msgs.push_back("Variable '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
-        return;
-    }
-
-    // 将变量添加到符号表中
-    VarAttribute var_attr;
-    var_attr.type = attribute.T.type;
-    var_attr.ConstTag = false;
-
-    // 检查数组维度是否合法
-    if (dims != nullptr) {
-        for (auto d : *dims) {
-            d->TypeCheck();
-            if (!d->attribute.V.ConstTag) {
-                error_msgs.push_back("Array dimension must be a constant expression for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-            }
-            if (d->attribute.T.type == Type::FLOAT) {
-                error_msgs.push_back("Array dimension cannot be of type float for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-            }
-        }
-    }
-
-    // 检查并处理初始化值
-    if (init != nullptr) {
-        init->TypeCheck();
-
-        if (init->attribute.T.type != attribute.T.type && init->attribute.T.type != Type::VOID) {
-            error_msgs.push_back("Type mismatch in initializer for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-        }
-    }
-
-    semant_table.symbol_table.add_Symbol(name, var_attr);
-    //TODO("VarDef Semant"); 
-}
-
-void ConstDef::TypeCheck() { 
-    // 检查是否在当前作用域中重复定义
-    int current_scope = semant_table.symbol_table.get_current_scope();
-    if (semant_table.symbol_table.lookup_scope(name) == current_scope) {
-        error_msgs.push_back("Constant '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
-        return;
-    }
-    // 检查数组维度是否合法
-    if (dims != nullptr) {
-        for (auto d : *dims) {
-            d->TypeCheck();
-            if (!d->attribute.V.ConstTag) {
-                error_msgs.push_back("Array dimension must be a constant expression for '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-            }
-            if (d->attribute.T.type == Type::FLOAT) {
-                error_msgs.push_back("Array dimension cannot be of type float for '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-            }
-        }
-    }
-    VarAttribute const_attr;
-    const_attr.type = attribute.T.type;
-    const_attr.ConstTag = true;
-    // 如果有初始化值，检查初始化值的类型是否匹配
-    if (init != nullptr) {
-        init->TypeCheck();
-
-        // 确保初始化值为常量表达式
-        if (!init->attribute.V.ConstTag) {
-            error_msgs.push_back("Initializer for constant '" + name->get_string() + "' must be a constant expression at line " + std::to_string(line_number) + "\n");
-        } else if (init->attribute.T.type != const_attr.type) {
-            // 只有在初始化值存在且类型不匹配时，才输出类型不匹配的错误
-            error_msgs.push_back("Type mismatch in initializer for constant '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
-        } else {
-            if(init->attribute.T.type == Type::INT) {
-                const_attr.IntInitVals.push_back(init->attribute.V.val.IntVal);
-            } else if(init->attribute.T.type == Type::FLOAT) {
-                const_attr.FloatInitVals.push_back(init->attribute.V.val.FloatVal);
-            }
-        }
-    }
-
-    if (dims != nullptr) {
-        for (auto d : *dims) {
-            const_attr.dims.push_back(d->attribute.V.val.IntVal); // 存储数组维度
-        }
-    }
-    semant_table.symbol_table.add_Symbol(name, const_attr);
-}
-
-void VarDecl::TypeCheck() { 
-    // 遍历变量声明列表中的每个变量定义
-    for (auto def : *var_def_list) {
-        /*auto var_def = dynamic_cast<VarDef*>(def);
-        if (!var_def) {
-            error_msgs.push_back("Invalid variable definition at line " + std::to_string(line_number) + "\n");
-            continue;
-        }*/
-
-        // 设置变量定义的类型为 VarDecl 声明的类型
-        def->attribute.T.type = type_decl;
-
-        // 调用 VarDef 的 TypeCheck 方法来检查单个变量定义
-        def->TypeCheck();
-    }
-    //TODO("VarDecl Semant"); 
-}
-
-void ConstDecl::TypeCheck() { 
-    // 遍历常量声明列表中的每个常量定义
-    for (auto def : *var_def_list) {
-        /*auto const_def = dynamic_cast<ConstDef*>(def);
-        if (!const_def) {
-            error_msgs.push_back("Invalid constant definition at line " + std::to_string(line_number) + "\n");
-            continue;
-        }*/
-        
-        // 设置常量定义的类型为 ConstDecl 声明的类型
-        def->attribute.T.type = type_decl;
-        
-        // 调用 ConstDef 的 TypeCheck 方法来检查单个常量定义
-        def->TypeCheck();
-    }
-    //TODO("ConstDecl Semant"); 
-}
-
-void BlockItem_Decl::TypeCheck() { decl->TypeCheck(); }
-
-void BlockItem_Stmt::TypeCheck() { stmt->TypeCheck(); }
-
-void __Block::TypeCheck() {
-    semant_table.symbol_table.enter_scope();
-    auto item_vector = *item_list;
-    for (auto item : item_vector) {
-        item->TypeCheck();
-    }
-    semant_table.symbol_table.exit_scope();
-}
-
-void __FuncFParam::TypeCheck() {
-    VarAttribute val;
-    val.ConstTag = false;
-    val.type = type_decl;
-    scope = 1;
-
-    // 如果dims为nullptr, 表示该变量不含数组下标, 如果你在语法分析中采用了其他方式处理，这里也需要更改
-    if (dims != nullptr) {    
-        auto dim_vector = *dims;
-
-        // the fisrt dim of FuncFParam is empty
-        // eg. int f(int A[][30][40])
-        val.dims.push_back(-1);    // 这里用-1表示empty，你也可以使用其他方式
-        for (int i = 1; i < dim_vector.size(); ++i) {
-            auto d = dim_vector[i];
-            d->TypeCheck();
-            if (d->attribute.V.ConstTag == false) {
-                error_msgs.push_back("Array Dim must be const expression in line " + std::to_string(line_number) +
-                                     "\n");
-            }
-            if (d->attribute.T.type == Type::FLOAT) {
-                error_msgs.push_back("Array Dim can not be float in line " + std::to_string(line_number) + "\n");
-            }
-            val.dims.push_back(d->attribute.V.val.IntVal);
-        }
-        attribute.T.type = Type::PTR;
-    } else {
-        attribute.T.type = type_decl;
-    }
-
-    if (name != nullptr) {
-        if (semant_table.symbol_table.lookup_scope(name) != -1) {
-            error_msgs.push_back("multiple difinitions of formals in function " + name->get_string() + " in line " +
-                                 std::to_string(line_number) + "\n");
-        }
-        semant_table.symbol_table.add_Symbol(name, val);
-    }
-}
-
-void __FuncDef::TypeCheck() {
-    semant_table.symbol_table.enter_scope();
-    attribute.T.type = return_type;
-    //main函数检查
-    if (name->get_string() == "main") {
-        MainFlag = true;
-    }
-    semant_table.FunctionTable[name] = this;
-
-    auto formal_vector = *formals;
-    for (auto formal : formal_vector) {
-        formal->TypeCheck();
-    }
-
-    // block TypeCheck
-    if (block != nullptr) {
-        auto item_vector = *(block->item_list);
-        for (auto item : item_vector) {
-            item->TypeCheck();
-        }
-    }
-
-    semant_table.symbol_table.exit_scope();
-}
 
 std::map<std::string, VarAttribute> ConstGlobalMap;
 std::map<std::string, VarAttribute> StaticGlobalMap; 
@@ -1583,6 +2084,282 @@ void SolveFloatInitVal(InitVal init, VarAttribute &val)    // used for global or
     }
 }
 
+void ConstInitVal::TypeCheck() { 
+    for (auto init_val : *initval) {
+        init_val->TypeCheck();
+    }
+    //TODO("ConstInitVal Semant"); 
+}
+
+void ConstInitVal_exp::TypeCheck() { 
+    if (exp == nullptr) {
+        return;
+    }
+    exp->TypeCheck();
+    attribute = exp->attribute;
+    // 检查表达式是否为常量
+    if (exp->attribute.V.ConstTag == false) {
+        error_msgs.push_back("Initializer expression must be a constant in ConstInitVal_exp at line " + std::to_string(line_number) + "\n");
+    }
+    //TODO("ConstInitValExp Semant"); 
+}
+
+void VarInitVal::TypeCheck() { 
+    for (auto init_val : *initval) {
+        init_val->TypeCheck();
+        
+        /*// 检查每个初始化值的类型是否匹配变量的类型（例如int、float等）
+        if (init_val->attribute.T.type != attribute.T.type) {
+            error_msgs.push_back("Error: Type mismatch in VarInitVal initializer at line " + std::to_string(line_number) + "\n");
+        }*/
+    }
+    //TODO("VarInitVal Semant"); 
+}
+
+void VarInitVal_exp::TypeCheck() { 
+    if (exp == nullptr) {
+        return;
+    }
+    exp->TypeCheck();
+    attribute = exp->attribute;
+    // 检查初始化值的类型是否为 void
+    if (attribute.T.type == Type::VOID) {
+        error_msgs.push_back("Error: Variable initializer expression cannot be of type void at line " + std::to_string(line_number) + "\n");
+    }
+    //TODO("VarInitValExp Semant"); 
+}
+
+void VarDef_no_init::TypeCheck() { 
+    // 检查数组维度是否合法
+    if (dims != nullptr) {
+        for (auto d : *dims) {
+            d->TypeCheck();
+            if (!d->attribute.V.ConstTag) {
+                error_msgs.push_back("Array dimension must be a constant expression for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+            }
+            if (d->attribute.T.type == Type::FLOAT) {
+                error_msgs.push_back("Array dimension cannot be of type float for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+            }
+        }
+    }
+
+    // 将未初始化的变量添加到符号表
+    VarAttribute var_attr;
+    var_attr.type = attribute.T.type;
+    var_attr.ConstTag = false;
+    if (dims != nullptr) {
+        for (auto d : *dims) {
+            var_attr.dims.push_back(d->attribute.V.val.IntVal); // 存储数组维度
+        }
+    }
+
+    // 检查是否在当前作用域中重复定义
+    if (semant_table.symbol_table.lookup_scope(name) == semant_table.symbol_table.get_current_scope()) {
+        error_msgs.push_back("Variable '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
+    } else {
+        semant_table.symbol_table.add_Symbol(name, var_attr);
+    }
+    //TODO("VarDefNoInit Semant"); 
+}
+
+void VarDef::TypeCheck() {
+    int current_scope = semant_table.symbol_table.get_current_scope();
+    // 检查是否在当前作用域中重复定义
+    if (semant_table.symbol_table.lookup_scope(name) == current_scope)  {
+        // 错误：全局作用域中已有同名变量
+        error_msgs.push_back("Variable '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
+        return;
+    }
+
+    // 将变量添加到符号表中
+    VarAttribute var_attr;
+    var_attr.type = attribute.T.type;
+    var_attr.ConstTag = false;
+
+    // 检查数组维度是否合法
+    if (dims != nullptr) {
+        for (auto d : *dims) {
+            d->TypeCheck();
+            if (!d->attribute.V.ConstTag) {
+                error_msgs.push_back("Array dimension must be a constant expression for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+            }
+            if (d->attribute.T.type == Type::FLOAT) {
+                error_msgs.push_back("Array dimension cannot be of type float for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+            }
+            var_attr.dims.push_back(d->attribute.V.val.IntVal);
+        }
+    }
+
+    // 检查并处理初始化值
+    if (init != nullptr) {
+        init->TypeCheck();
+
+        if (init->attribute.T.type != attribute.T.type && init->attribute.T.type != Type::VOID) {
+            error_msgs.push_back("Type mismatch in initializer for variable '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+        }
+    }
+
+    semant_table.symbol_table.add_Symbol(name, var_attr);
+    //TODO("VarDef Semant"); 
+}
+
+void ConstDef::TypeCheck() { 
+    // 检查是否在当前作用域中重复定义
+    int current_scope = semant_table.symbol_table.get_current_scope();
+    if (semant_table.symbol_table.lookup_scope(name) == current_scope) {
+        error_msgs.push_back("Constant '" + name->get_string() + "' is already defined in the current scope at line " + std::to_string(line_number) + "\n");
+        return;
+    }
+    VarAttribute const_attr;
+    const_attr.type = attribute.T.type;
+    const_attr.ConstTag = true;
+    // 检查数组维度是否合法
+    if (dims != nullptr) {
+        for (auto d : *dims) {
+            d->TypeCheck();
+            if (!d->attribute.V.ConstTag) {
+                error_msgs.push_back("Array dimension must be a constant expression for '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+            }
+            if (d->attribute.T.type == Type::FLOAT) {
+                error_msgs.push_back("Array dimension cannot be of type float for '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
+            }
+        }
+    }
+    
+    // 如果有初始化值，检查初始化值的类型是否匹配
+    if (init != nullptr) {
+        init->TypeCheck();
+
+        // 处理初始化值
+        if (init != nullptr) {
+            init->TypeCheck();
+            if (attribute.T.type == Type::INT) {
+                SolveIntInitVal(init, const_attr);
+            } else if (attribute.T.type == Type::FLOAT) {
+                SolveFloatInitVal(init, const_attr);
+            }
+        }
+    }
+
+    if (dims != nullptr) {
+        for (auto d : *dims) {
+            const_attr.dims.push_back(d->attribute.V.val.IntVal); // 存储数组维度
+        }
+    }
+    semant_table.symbol_table.add_Symbol(name, const_attr);
+}
+
+void VarDecl::TypeCheck() { 
+    // 遍历变量声明列表中的每个变量定义
+    for (auto def : *var_def_list) {
+        /*auto var_def = dynamic_cast<VarDef*>(def);
+        if (!var_def) {
+            error_msgs.push_back("Invalid variable definition at line " + std::to_string(line_number) + "\n");
+            continue;
+        }*/
+
+        // 设置变量定义的类型为 VarDecl 声明的类型
+        def->attribute.T.type = type_decl;
+
+        // 调用 VarDef 的 TypeCheck 方法来检查单个变量定义
+        def->TypeCheck();
+    }
+    //TODO("VarDecl Semant"); 
+}
+
+void ConstDecl::TypeCheck() { 
+    // 遍历常量声明列表中的每个常量定义
+    for (auto def : *var_def_list) {
+        /*auto const_def = dynamic_cast<ConstDef*>(def);
+        if (!const_def) {
+            error_msgs.push_back("Invalid constant definition at line " + std::to_string(line_number) + "\n");
+            continue;
+        }*/
+        
+        // 设置常量定义的类型为 ConstDecl 声明的类型
+        def->attribute.T.type = type_decl;
+        
+        // 调用 ConstDef 的 TypeCheck 方法来检查单个常量定义
+        def->TypeCheck();
+    }
+    //TODO("ConstDecl Semant"); 
+}
+
+void BlockItem_Decl::TypeCheck() { decl->TypeCheck(); }
+
+void BlockItem_Stmt::TypeCheck() { stmt->TypeCheck(); }
+
+void __Block::TypeCheck() {
+    semant_table.symbol_table.enter_scope();
+    auto item_vector = *item_list;
+    for (auto item : item_vector) {
+        item->TypeCheck();
+    }
+    semant_table.symbol_table.exit_scope();
+}
+
+void __FuncFParam::TypeCheck() {
+    VarAttribute val;
+    val.ConstTag = false;
+    val.type = type_decl;
+    scope = 1;
+
+    if (dims != nullptr) {
+        auto dim_vector = *dims;
+        val.dims.push_back(-1);
+        for (int i = 1; i < dim_vector.size(); ++i) {
+            auto d = dim_vector[i];
+            d->TypeCheck();
+            if (d->attribute.V.ConstTag == false) {
+                error_msgs.push_back("Array Dim must be const expression in line " + std::to_string(line_number) +
+                                     "\n");
+            }
+            if (d->attribute.T.type == Type::FLOAT) {
+                error_msgs.push_back("Array Dim can not be float in line " + std::to_string(line_number) + "\n");
+            }
+            val.dims.push_back(d->attribute.V.val.IntVal);
+        }
+        attribute.T.type = Type::PTR;
+    } else {
+        attribute.T.type = type_decl;
+    }
+
+    if (name != nullptr) {
+        if (semant_table.symbol_table.lookup_scope(name) != -1) {
+            error_msgs.push_back("multiple difinitions of formals in function " + name->get_string() + " in line " +
+                                 std::to_string(line_number) + "\n");
+        }
+        semant_table.symbol_table.add_Symbol(name, val);
+    }
+}
+
+void __FuncDef::TypeCheck() {
+    semant_table.symbol_table.enter_scope();
+    attribute.T.type = return_type;
+    //main函数检查
+    if (name->get_string() == "main") {
+        MainFlag = true;
+    }
+    semant_table.FunctionTable[name] = this;
+
+    auto formal_vector = *formals;
+    for (auto formal : formal_vector) {
+        formal->TypeCheck();
+    }
+
+    // block TypeCheck
+    if (block != nullptr) {
+        auto item_vector = *(block->item_list);
+        for (auto item : item_vector) {
+            item->TypeCheck();
+        }
+    }
+
+    semant_table.symbol_table.exit_scope();
+}
+
+
+
 void CompUnit_Decl::TypeCheck() { 
     Type::ty type_decl = decl->GetTypedecl();
     auto def_vector = *decl->GetDefs();
@@ -1651,6 +2428,3 @@ void CompUnit_Decl::TypeCheck() {
 }
 
 void CompUnit_FuncDef::TypeCheck() { func_def->TypeCheck(); }
-
-
-

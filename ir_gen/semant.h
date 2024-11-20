@@ -25,6 +25,7 @@ public:
     // key的含义是全局变量名，value的含义是该全局变量的信息(初始值，类型等)
     // 我们可以在semant阶段就在llvmIR中生成全局变量定义指令
     std::map<Symbol, VarAttribute> GlobalTable;
+    std::map<Symbol, int> GlobalStrTable;
 
     SemantTable() {
         // 添加库函数到函数表中, 我们不要求实现putf这个库函数
