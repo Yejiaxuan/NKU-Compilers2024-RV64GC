@@ -98,7 +98,8 @@ void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int sr
     if (type_src == type_dst) {
         return;
     } else {
-        int dst = ++irgen_table.register_counter; // 自动分配一个新的寄存器作为目标寄存器
+        irgen_table.register_counter++;
+        int dst = irgen_table.register_counter; // 自动分配一个新的寄存器作为目标寄存器
         if (type_src == Type::FLOAT && type_dst == Type::INT) {
             IRgenFptosi(B, src, dst);
         } else if (type_src == Type::INT && type_dst == Type::FLOAT) {
@@ -106,10 +107,8 @@ void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int sr
         } else if (type_src == Type::BOOL && type_dst == Type::INT) {
             IRgenZextI1toI32(B, src, dst);
         } else if (type_src == Type::INT && type_dst == Type::BOOL) {
-            // INT to BOOL conversion (non-zero to true, zero to false)
             IRgenIcmpImmRight(B, BasicInstruction::IcmpCond::ne, src, 0, dst);
         } else if (type_src == Type::FLOAT && type_dst == Type::BOOL) {
-            // FLOAT to BOOL conversion (non-zero to true, zero to false)
             IRgenFcmpImmRight(B, BasicInstruction::FcmpCond::ONE, src, 0.0f, dst);
         } else if (type_src == Type::BOOL && type_dst == Type::FLOAT) {
             // BOOL to FLOAT conversion (true to 1.0, false to 0.0)
@@ -358,16 +357,14 @@ void EqExp_neq::codeIR() {
 
 // short circuit &&
 void LAndExp_and::codeIR() {
-    // 获取当前函数的基本块
-    LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
-
     // 创建新标签
     int left_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
     // 生成左操作数的代码
     landexp->true_label = left_label;
     landexp->false_label = this->false_label;
     landexp->codeIR();
-
+    // 获取当前函数的基本块
+    LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
     IRgenTypeConverse(current_block, landexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
     // 如果左操作数为 false，跳转到结束块（短路逻辑）
@@ -398,9 +395,6 @@ void LAndExp_and::codeIR() {
 
 // short circuit ||
 void LOrExp_or::codeIR() {
-    // 获取当前函数的基本块
-    LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
-
     // 创建新标签
     int left_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
 
@@ -408,6 +402,8 @@ void LOrExp_or::codeIR() {
     lorexp->true_label = this->true_label;
     lorexp->false_label = left_label;
     lorexp->codeIR();
+    // 获取当前函数的基本块
+    LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
     IRgenTypeConverse(current_block, lorexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
     // 如果左操作数为 true，跳转到结束块（短路逻辑）
@@ -507,12 +503,12 @@ void FuncRParams::codeIR() {
         // 获取参数类型和值
         Type::ty param_type = param->attribute.T.type;
 
-        // 如果参数是 FLOAT 类型，转换为 DOUBLE
+        /*// 如果参数是 FLOAT 类型，转换为 DOUBLE
         if (param_type == Type::FLOAT) {
             IRgenTypeConverse(llvmIR.GetBlock(this_function, function_label), param_type, Type::DOUBLE,
                               irgen_table.register_counter);
             param_type = Type::DOUBLE;
-        }
+        }*/
 
         // 将参数类型和值追加到成员变量 args 中
         args.emplace_back(Type2LLVM(param_type), GetNewRegOperand(irgen_table.register_counter));
@@ -1180,7 +1176,7 @@ void __FuncFParam::codeIR() {
         IRgenAlloca(entry_block, llvm_type, param_reg);
 
         // 将参数值存储到寄存器
-        IRgenStore(entry_block, llvm_type, GetNewRegOperand(param_reg - 1), GetNewRegOperand(param_reg));
+        IRgenStore(entry_block, llvm_type, GetNewRegOperand(index), GetNewRegOperand(param_reg));
 
         // 更新符号表和寄存器表
         irgen_table.symbol_table.add_Symbol(this->name, param_reg);
