@@ -1920,9 +1920,7 @@ void return_stmt_void::TypeCheck() {}
 std::map<std::string, VarAttribute> ConstGlobalMap;
 std::map<std::string, VarAttribute> StaticGlobalMap; 
 
-// Type::VOID -> VOID    Type::Int -> I32    Type::FLOAT -> FLOAT32
-BasicInstruction::LLVMType Type2LLvm[6] = {BasicInstruction::LLVMType::VOID, BasicInstruction::LLVMType::I32, BasicInstruction::LLVMType::FLOAT32,
-                         BasicInstruction::LLVMType::I1,   BasicInstruction::LLVMType::PTR, BasicInstruction::LLVMType::DOUBLE};
+extern BasicInstruction::LLVMType Type2LLVM(Type::ty type);
 
 int FindMinDimStep(const VarAttribute &val, int relativePos, int dimsIdx, int &max_subBlock_sz) {
     int min_dim_step = 1;
@@ -2362,7 +2360,7 @@ void CompUnit_Decl::TypeCheck() {
         semant_table.GlobalTable[def->GetName()] = val;
 
         // add Global Decl llvm ins
-        BasicInstruction::LLVMType lltype = Type2LLvm[type_decl];
+        BasicInstruction::LLVMType lltype = Type2LLVM(type_decl);
 
         Instruction globalDecl;
         if (def->GetDims() != nullptr) {
