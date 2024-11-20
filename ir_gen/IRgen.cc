@@ -462,11 +462,13 @@ void Lval::codeIR() {
         // 处理数组索引
         std::vector<Operand> array_indexs;
         // 对每个维度的索引表达式进行 codeIR，并进行类型转换
-        for (auto dim_exp : *dims) {
-            dim_exp->codeIR();
-            int idx_reg = irgen_table.register_counter;
-            IRgenTypeConverse(B, dim_exp->attribute.T.type, Type::INT, idx_reg);
-            array_indexs.push_back(GetNewRegOperand(idx_reg));
+        if(dims != nullptr){
+            for (auto dim_exp : *dims) {
+                dim_exp->codeIR();
+                int idx_reg = irgen_table.register_counter;
+                IRgenTypeConverse(B, dim_exp->attribute.T.type, Type::INT, idx_reg);
+                array_indexs.push_back(GetNewRegOperand(idx_reg));
+            }
         }
 
         // 如果是形参数组，第一个索引不需要 0
@@ -1165,7 +1167,7 @@ void __FuncFParam::codeIR() {
         }
 
         // 更新符号表和数组表
-        int index = irgen_table.register_counter + 1;  // 当前参数索引
+        //int index = irgen_table.register_counter + 1;  // 当前参数索引
         FormalArrayTable[index] = 1;
         irgen_table.symbol_table.add_Symbol(this->name, index);
         RegTable[index] = param_attr;
@@ -1211,7 +1213,9 @@ void __FuncDef::codeIR() {
     // 处理参数
     auto formal_vector = *formals;
     irgen_table.register_counter = formal_vector.size() - 1;
-    for (auto formal_param : formal_vector) {
+    for (int i = 0; i < formal_vector.size(); ++i) {
+        auto formal_param = formal_vector[i];
+        formal_param->index = i;
         formal_param->codeIR();
     }
 
@@ -1335,5 +1339,6 @@ void AddLibFunctionDeclare() {
     llvm_smin->InsertFormal(BasicInstruction::I32);
     llvmIR.function_declare.push_back(llvm_smin);
 }
+
 
 
