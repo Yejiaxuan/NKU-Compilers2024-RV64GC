@@ -462,8 +462,15 @@ void Lval::codeIR() {
             for (auto dim_exp : *dims) {
                 dim_exp->codeIR();
                 int idx_reg = irgen_table.register_counter;
-                IRgenTypeConverse(B, dim_exp->attribute.T.type, Type::INT, idx_reg);
-                array_indexs.push_back(GetNewRegOperand(idx_reg));
+                if (dim_exp->attribute.T.type != Type::INT) {
+                    // 需要进行类型转换
+                    IRgenTypeConverse(B, dim_exp->attribute.T.type, Type::INT, idx_reg);
+                    int converted_reg = irgen_table.register_counter; // 转换后的寄存器编号
+                    array_indexs.push_back(GetNewRegOperand(converted_reg));
+                } else {
+                    // 不需要类型转换，直接使用原寄存器
+                    array_indexs.push_back(GetNewRegOperand(idx_reg));
+                }
             }
         }
 
