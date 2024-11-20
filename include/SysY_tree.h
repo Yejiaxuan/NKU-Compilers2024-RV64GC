@@ -507,6 +507,7 @@ public:
     std::vector<Expression> *dims;
     // 如果dims为nullptr, 表示该变量不含数组下标, 你也可以通过其他方式判断，但需要修改SysY_parser.y已有的代码
     InitVal init;
+
     VarDef(Symbol n, std::vector<Expression> *d, InitVal i) : name(n), dims(d), init(i) {}
 
     int IsInit() { return 1; }
@@ -625,7 +626,7 @@ public:
     // 如果dims为nullptr, 表示该变量不含数组下标, 你也可以通过其他方式判断，但需要修改SysY_parser.y已有的代码
     Symbol name;
     int scope = -1;    // 在语义分析阶段填入正确的作用域
-
+    int index = 0;
     __FuncFParam(Type::ty t, Symbol n, std::vector<Expression> *d) {
         type_decl = t;
         name = n;
