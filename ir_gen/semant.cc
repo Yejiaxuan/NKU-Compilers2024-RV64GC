@@ -1588,71 +1588,134 @@ void ConstExp::TypeCheck() {
 }
 
 
-int GetArrayIntVal(VarAttribute &val, std::vector<int> &indexs) {
-    //[i] + i
-    //[i][j] + i*dim[1] + j
-    //[i][j][k] + i*dim[1]*dim[2] + j*dim[2] + k
-    //[i][j][k][w] + i*dim[1]*dim[2]*dim[3] + j*dim[2]*dim[3] + k*dim[3] + w
-    int idx = 0;
-    for (int curIndex = 0; curIndex < indexs.size(); curIndex++) {
-        idx *= val.dims[curIndex];
-        idx += indexs[curIndex];
+// 通过偏移量计算多维数组元素的索引值
+int GetArrayIntVal(VarAttribute &val, std::vector<int> &indices) {
+    // 计算最终的线性偏移量
+    int offset = 0;
+    int totalDimSize = 1;
+    
+    // 从最右维度开始,依次计算每个维度的贡献:
+    // 最右维度直接加上索引值 
+    // 其他维度要先乘以右边维度的总大小再加上索引值
+    for(int i = indices.size() - 1; i >= 0; i--) {
+        offset += indices[i] * totalDimSize;
+        if(i > 0) {
+            totalDimSize *= val.dims[i];
+        }
     }
-    return val.IntInitVals[idx];
+    
+    return val.IntInitVals[offset];
 }
 
-float GetArrayFloatVal(VarAttribute &val, std::vector<int> &indexs) {
-    int idx = 0;
-    for (int curIndex = 0; curIndex < indexs.size(); curIndex++) {
-        idx *= val.dims[curIndex];
-        idx += indexs[curIndex];
+float GetArrayFloatVal(VarAttribute &val, std::vector<int> &indices) {
+    // 使用子区间大小的方式计算索引
+    int finalIndex = 0;
+    int subSize = 1;
+    
+    // 从左到右计算每个维度
+    // 每个维度的索引值乘以剩余维度的大小之积
+    for(int i = indices.size() - 1; i >= 0; i--) {
+        // 计算当前维右边所有维度的元素个数之积
+        subSize = 1;
+        for(int j = i + 1; j < val.dims.size(); j++) {
+            subSize *= val.dims[j];
+        }
+        // 累加当前维度对最终索引的贡献
+        finalIndex += indices[i] * subSize;
     }
-    return val.FloatInitVals[idx];
+    
+    return val.FloatInitVals[finalIndex];
 }
 
 void Lval::TypeCheck() { 
+    // 初始状态设置
+    struct IndexInfo {
+        std::vector<int> values;
+        bool isAllConst;
+    };
+    
+    // 第一步：处理索引信息 
+    auto processIndices = [this]() -> IndexInfo {
+        IndexInfo result{{}, true};
+        if (!dims) return result;
+        
+        for (const auto& dim : *dims) {
+            dim->TypeCheck();
+            switch (dim->attribute.T.type) {
+                case Type::VOID:
+                case Type::FLOAT:
+                    error_msgs.push_back(
+                        std::string("Invalid array dimension type (") + 
+                        (dim->attribute.T.type == Type::VOID ? "void" : "float") +
+                        ") at line " + std::to_string(line_number) + "\n"
+                    );
+                    break;
+                default:
+                    result.values.push_back(dim->attribute.V.val.IntVal);
+                    result.isAllConst &= dim->attribute.V.ConstTag;
+            }
+        }
+        return result;
+    };
+
+    // 第二步：查找变量定义
+    auto lookupVariable = [this]() -> std::pair<VarAttribute, int> {
+        auto localVar = semant_table.symbol_table.lookup_val(name);
+        if (localVar.type != Type::VOID) {
+            return {localVar, semant_table.symbol_table.lookup_scope(name)};
+        }
+        
+        auto globalIt = semant_table.GlobalTable.find(name);
+        if (globalIt != semant_table.GlobalTable.end()) {
+            return {globalIt->second, 0};
+        }
+        
+        error_msgs.push_back("Use of undeclared identifier '" + 
+                           std::string(name->get_string()) + 
+                           "' at line " + std::to_string(line_number) + "\n");
+        return {VarAttribute(), -1};
+    };
+
+    // 第三步：设置属性
+    auto setAttributes = [this](const VarAttribute& var, const IndexInfo& idx) {
+        size_t idxCount = idx.values.size();
+        size_t dimCount = var.dims.size();
+        
+        if (idxCount > dimCount) {
+            error_msgs.push_back("Too many indices for array at line " + 
+                               std::to_string(line_number) + "\n");
+            return;
+        }
+        
+        if (idxCount == dimCount) {
+            attribute.T.type = var.type;
+            attribute.V.ConstTag = var.ConstTag && idx.isAllConst;
+            
+            if (attribute.V.ConstTag) {
+                // 创建非const临时变量用于调用GetArray*Val
+                VarAttribute tempVar = var;
+                std::vector<int> tempIndices = idx.values;
+                
+                if (var.type == Type::INT) {
+                    attribute.V.val.IntVal = GetArrayIntVal(tempVar, tempIndices);
+                } else {
+                    attribute.V.val.FloatVal = GetArrayFloatVal(tempVar, tempIndices);
+                }
+            }
+        } else {
+            attribute.T.type = Type::PTR;
+            attribute.V.ConstTag = false;
+        }
+    };
+
+    // 执行主逻辑
     is_left = false;
-    std::vector<int> arrayindexs;
-    bool arrayindexConstTag = true;
-    if (dims != nullptr) {
-        for (auto d : *dims) {
-            d->TypeCheck();
-            if (d->attribute.T.type == Type::VOID) {
-                error_msgs.push_back("Array Dim can not be void in line " + std::to_string(line_number) + "\n");
-            } else if (d->attribute.T.type == Type::FLOAT) {
-                error_msgs.push_back("Array Dim can not be float in line " + std::to_string(line_number) + "\n");
-            }
-            arrayindexs.push_back(d->attribute.V.val.IntVal);
-            arrayindexConstTag &= d->attribute.V.ConstTag;
-        }
-    }
-
-    VarAttribute val = semant_table.symbol_table.lookup_val(name);
-    if (val.type != Type::VOID) {    // local var
-        scope = semant_table.symbol_table.lookup_scope(name);
-    } else if (semant_table.GlobalTable.find(name) != semant_table.GlobalTable.end()) {    // global var
-        val = semant_table.GlobalTable[name];
-        scope = 0;
-    } else {
-        error_msgs.push_back("Undefined var in line " + std::to_string(line_number) + "\n");
-        return;
-    }
-
-    if (arrayindexs.size() == val.dims.size()) {    // lval is a number(not a array)
-        attribute.V.ConstTag = val.ConstTag & arrayindexConstTag;
-        attribute.T.type = val.type;
-        if (attribute.V.ConstTag) {
-            if (attribute.T.type == Type::INT) {
-                attribute.V.val.IntVal = GetArrayIntVal(val, arrayindexs);
-            } else if (attribute.T.type == Type::FLOAT) {
-                attribute.V.val.FloatVal = GetArrayFloatVal(val, arrayindexs);
-            }
-        }
-    } else if (arrayindexs.size() < val.dims.size()) {    // lval is a array
-        attribute.V.ConstTag = false;
-        attribute.T.type = Type::PTR;
-    } else {
-        error_msgs.push_back("Array is unmatched in line " + std::to_string(line_number) + "\n");
+    auto indices = processIndices();
+    auto [varAttr, varScope] = lookupVariable();
+    
+    if (varScope != -1) {
+        scope = varScope;
+        setAttributes(varAttr, indices);
     }
     //TODO("Lval Semant"); 
 }
