@@ -1978,7 +1978,7 @@ void while_stmt::TypeCheck() {
     Cond->TypeCheck();
 
     if (Cond->attribute.T.type == Type::VOID) {
-        error_msgs.push_back("while cond type is invalid " + std::to_string(line_number) + "\n");
+        error_msgs.push_back("while cond type is invalid " + std::to_string(Cond->GetLineNumber()) + "\n");
     }
 
     InWhileCount++;
