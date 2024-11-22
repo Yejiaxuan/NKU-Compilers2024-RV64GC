@@ -14,8 +14,6 @@ Operand current_strptr = nullptr;
 std::map<Symbol, int> GlobalTable;
 std::map<int, VarAttribute> RegTable;
 std::map<int, int> FormalArrayTable;
-std::map<FuncDefInstruction, int> max_label_map{};
-std::map<FuncDefInstruction, int> max_reg_map{};
 int max_reg = -1;
 int label_count = -1;
 void AddLibFunctionDeclare();
@@ -498,69 +496,63 @@ void Lval::codeIR() {
 }
 
 void FuncRParams::codeIR() {
-    /*args.clear(); // 清空之前的参数列表
+    LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
 
-    if (params == nullptr || params->empty()) {
-        return; // 如果没有参数，直接返回
-    }
+    // 获取形式参数
+    auto formal_params = semant_table.FunctionTable[function_name]->formals;
+    assert(params->size() == formal_params->size()); // 参数数量必须匹配
 
-    for (auto param : *params) {
-        param->codeIR();  // 为每个参数生成中间代码
+    for (size_t i = 0; i < params->size(); ++i) {
+        auto param = params->at(i);
+        auto formal_param = formal_params->at(i);
 
-        // 获取参数类型和值
-        Type::ty param_type = param->attribute.T.type;
-
-        // 如果参数是 FLOAT 类型，转换为 DOUBLE
-        if (param_type == Type::FLOAT) {
-            IRgenTypeConverse(llvmIR.GetBlock(this_function, function_label), param_type, Type::DOUBLE,
-                              irgen_table.register_counter);
-            param_type = Type::DOUBLE;
+        param->codeIR();  // 生成参数的中间代码
+        
+        // 类型检查并进行必要的类型转换
+        if (formal_param->type_decl == Type::PTR) {
+            // 处理指针类型参数
+            if (param->attribute.T.type != Type::PTR) {
+                IRgenGetElementptrIndexI32(
+                    current_block, Type2LLVM(param->attribute.T.type), ++irgen_table.register_counter,
+                    GetNewRegOperand(param->attribute.result_reg), {}, {}
+                );
+                call_args.emplace_back(BasicInstruction::PTR, GetNewRegOperand(irgen_table.register_counter));
+            } else {
+                call_args.emplace_back(BasicInstruction::PTR, GetNewRegOperand(param->attribute.result_reg));
+            }
+        } else {
+            // 处理非指针类型参数
+            int src = irgen_table.register_counter;
+            if (param->attribute.T.type == Type::FLOAT && formal_param->type_decl == Type::INT) {
+                IRgenFptosi(current_block, src, ++irgen_table.register_counter);
+                param->attribute.T.type = formal_param->type_decl;
+            } else if (param->attribute.T.type == Type::INT && formal_param->type_decl == Type::FLOAT) {
+                IRgenSitofp(current_block, src, ++irgen_table.register_counter);
+                param->attribute.T.type = formal_param->type_decl;
+            } else if (param->attribute.T.type == Type::BOOL && formal_param->type_decl == Type::INT) {
+                IRgenZextI1toI32(current_block, src, ++irgen_table.register_counter);
+                param->attribute.T.type = formal_param->type_decl;
+            } else if (param->attribute.T.type == Type::INT && formal_param->type_decl == Type::BOOL) {
+                IRgenIcmpImmRight(current_block, BasicInstruction::IcmpCond::ne, src, 0, ++irgen_table.register_counter);
+                param->attribute.T.type = formal_param->type_decl;
+            } else if (param->attribute.T.type == Type::FLOAT && formal_param->type_decl == Type::BOOL) {
+                IRgenFcmpImmRight(current_block, BasicInstruction::FcmpCond::ONE, src, 0.0f, ++irgen_table.register_counter);
+                param->attribute.T.type = formal_param->type_decl;
+            } else if (param->attribute.T.type == Type::BOOL && formal_param->type_decl == Type::FLOAT) {
+                IRgenZextI1toI32(current_block, src, ++irgen_table.register_counter);
+                src = irgen_table.register_counter;
+                IRgenSitofp(current_block, src, ++irgen_table.register_counter);
+                param->attribute.T.type = formal_param->type_decl;
+            }
+            call_args.emplace_back(Type2LLVM(param->attribute.T.type), GetNewRegOperand(irgen_table.register_counter));
         }
-
-        // 将参数类型和值追加到成员变量 args 中
-        args.emplace_back(Type2LLVM(param_type), GetNewRegOperand(irgen_table.register_counter));
-    }*/
+    }
     // TODO("FuncRParams CodeIR");
 }
 
 void Func_call::codeIR() {
     // 获取当前块和函数上下文
     LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
-
-    // 特殊处理 "putf" 函数
-    if (name->get_string() == "putf") {
-        std::vector<std::pair<BasicInstruction::LLVMType, Operand>> call_args;
-
-        // 检查参数是否存在
-        if (funcr_params != nullptr) {
-            auto func_params = dynamic_cast<FuncRParams*>(funcr_params);
-            if (func_params && func_params->params && !func_params->params->empty()) {
-                auto first_param = func_params->params->at(0);
-                first_param->codeIR(); // 生成第一个参数代码
-                call_args.emplace_back(BasicInstruction::PTR, irgen_table.string_operand);
-
-                // 处理后续参数
-                for (size_t idx = 1; idx < func_params->params->size(); ++idx) {
-                    auto param = func_params->params->at(idx);
-                    param->codeIR();
-
-                    Type::ty actual_type = param->attribute.T.type;
-                    if (actual_type == Type::FLOAT) {
-                        IRgenTypeConverse(current_block, actual_type, Type::DOUBLE, irgen_table.register_counter);
-                        actual_type = Type::DOUBLE;
-                    }
-
-                    call_args.emplace_back(Type2LLVM(actual_type), GetNewRegOperand(irgen_table.register_counter));
-                }
-            }
-        }
-
-        // 调用 "putf"
-        IRgenCallVoid(current_block, BasicInstruction::VOID, call_args, name->get_string());
-        return;
-    }
-
-    // 普通函数调用
     auto return_type = semant_table.FunctionTable[name]->return_type;
     auto llvm_ret_type = Type2LLVM(return_type);
 
@@ -569,64 +561,11 @@ void Func_call::codeIR() {
     // 检查并处理函数参数
     if (funcr_params != nullptr) {
         auto func_params = dynamic_cast<FuncRParams*>(funcr_params);
-        auto formal_params = semant_table.FunctionTable[name]->formals;
 
-        if (func_params && formal_params) {
-            assert(func_params->params->size() == formal_params->size());
-
-            for (size_t i = 0; i < func_params->params->size(); ++i) {
-                auto param = func_params->params->at(i);
-                auto formal_param = formal_params->at(i);
-
-                param->codeIR(); // 生成每个参数的代码
-                // 检查参数类型并进行必要的转换
-                if (formal_param->type_decl == Type::PTR) {
-                    // 如果形参是指针类型，确保参数是指针
-                    if (param->attribute.T.type != Type::PTR) {
-                        IRgenGetElementptrIndexI32(
-                            current_block, Type2LLVM(param->attribute.T.type), ++irgen_table.register_counter,
-                            GetNewRegOperand(param->attribute.result_reg), {}, {}
-                        );
-                        call_args.emplace_back(BasicInstruction::PTR, GetNewRegOperand(irgen_table.register_counter));
-                    } else {
-                        call_args.emplace_back(BasicInstruction::PTR, GetNewRegOperand(param->attribute.result_reg));
-                    }
-                } else {
-                    // 其他类型转换
-                    int src = irgen_table.register_counter;
-                    if (param->attribute.T.type == Type::FLOAT && formal_param->type_decl == Type::INT) {
-                        IRgenFptosi(current_block, src, ++irgen_table.register_counter);
-                        param->attribute.T.type = formal_param->type_decl;
-                    } else if (param->attribute.T.type == Type::INT && formal_param->type_decl == Type::FLOAT) {
-                        IRgenSitofp(current_block, src, ++irgen_table.register_counter);
-                        param->attribute.T.type = formal_param->type_decl;
-                    } else if (param->attribute.T.type == Type::BOOL && formal_param->type_decl == Type::INT) {
-                        IRgenZextI1toI32(current_block, src, ++irgen_table.register_counter);
-                        param->attribute.T.type = formal_param->type_decl;
-                    } else if (param->attribute.T.type == Type::INT && formal_param->type_decl == Type::BOOL) {
-                        IRgenIcmpImmRight(current_block, BasicInstruction::IcmpCond::ne, src, 0, ++irgen_table.register_counter);
-                        param->attribute.T.type = formal_param->type_decl;
-                    } else if (param->attribute.T.type == Type::FLOAT && formal_param->type_decl == Type::BOOL) {
-                        IRgenFcmpImmRight(current_block, BasicInstruction::FcmpCond::ONE, src, 0.0f, ++irgen_table.register_counter);
-                        param->attribute.T.type = formal_param->type_decl;
-                    } else if (param->attribute.T.type == Type::BOOL && formal_param->type_decl == Type::FLOAT) {
-                        // BOOL to FLOAT conversion (true to 1.0, false to 0.0)
-                        IRgenZextI1toI32(current_block, src, ++irgen_table.register_counter);
-                        src = irgen_table.register_counter;
-                        //irgen_table.register_counter++;
-                        //dst = irgen_table.register_counter;
-                        IRgenSitofp(current_block, src, ++irgen_table.register_counter);
-                        param->attribute.T.type = formal_param->type_decl;
-                    } 
-                    //IRgenTypeConverse(current_block, param->attribute.T.type, formal_param->type_decl, irgen_table.register_counter);
-                    call_args.emplace_back(Type2LLVM(param->attribute.T.type), GetNewRegOperand(irgen_table.register_counter));
-                }
-            }
-                // 类型转换
-                //IRgenTypeConverse(current_block, param->attribute.T.type, formal_param->type_decl, irgen_table.register_counter);
-
-                // 将生成的参数插入参数列表
-                //call_args.emplace_back(Type2LLVM(param->attribute.T.type), GetNewRegOperand(irgen_table.register_counter));
+        if (func_params) {
+            func_params->function_name = name; // 设置函数名上下文
+            func_params->codeIR(); // 调用 FuncRParams::codeIR
+            call_args = func_params->call_args; // 获取处理后的参数
         }
     }
 
@@ -783,28 +722,35 @@ void block_stmt::codeIR() {
 }
 
 void ifelse_stmt::codeIR() {
-    int ifLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
-    int elseLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
-    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    // 创建基本块
+    int ifLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;    // if 分支块
+    int elseLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id; // else 分支块
+    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;  // 合并块
 
+    // 条件判断部分
     Cond->true_label = ifLabel;
     Cond->false_label = elseLabel;
-    Cond->codeIR();
-    LLVMBlock block1 = llvmIR.GetBlock(this_function, function_label);
-    IRgenTypeConverse(block1, Cond->attribute.T.type, Type::BOOL, irgen_table.register_counter);
-    IRgenBrCond(block1, irgen_table.register_counter, ifLabel, elseLabel);
+    Cond->codeIR(); // 生成条件表达式的中间代码
+    LLVMBlock currentBlock = llvmIR.GetBlock(this_function, function_label);
+    IRgenTypeConverse(currentBlock, Cond->attribute.T.type, Type::BOOL, irgen_table.register_counter); // 转换为布尔类型
+    IRgenBrCond(currentBlock, irgen_table.register_counter, ifLabel, elseLabel); // 根据条件跳转
 
+    // if 分支块生成
     function_label = ifLabel;
-    ifstmt->codeIR();
-    LLVMBlock block2 = llvmIR.GetBlock(this_function, function_label);
-    IRgenBRUnCond(block2, endLabel);
+    ifstmt->codeIR(); // 生成 if 语句块的中间代码
+    LLVMBlock ifBlock = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(ifBlock, endLabel); // if 块结束后跳转到合并块
 
+    // else 分支块生成
     function_label = elseLabel;
-    elsestmt->codeIR();
-    LLVMBlock block3 = llvmIR.GetBlock(this_function, function_label);
-    IRgenBRUnCond(block3, endLabel);
+    elsestmt->codeIR(); // 生成 else 语句块的中间代码
+    LLVMBlock elseBlock = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(elseBlock, endLabel); // else 块结束后跳转到合并块
 
+    // 合并块生成
     function_label = endLabel;
+    LLVMBlock endBlock = llvmIR.GetBlock(this_function, function_label);
+
     // TODO("IfElseStmt CodeIR");
 }
 
@@ -1159,8 +1105,6 @@ void ConstDef::codeIR() {
 }
 
 void VarDecl::codeIR() {
-    /*LLVMBlock block = llvmIR.GetBlock(this_function, 0);
-    LLVMBlock init_block = llvmIR.GetBlock(this_function, function_label);*/
     Type::ty local_type_decl = this->type_decl;
     Type::ty temp = current_type_decl;
 
@@ -1173,8 +1117,6 @@ void VarDecl::codeIR() {
 }
 
 void ConstDecl::codeIR() {
-    /*LLVMBlock block = llvmIR.GetBlock(this_function, 0);
-    LLVMBlock init_block = llvmIR.GetBlock(this_function, function_label);*/
     Type::ty local_type_decl = this->type_decl;
     Type::ty temp = current_type_decl;
 
@@ -1209,29 +1151,15 @@ void __FuncFParam::codeIR() {
     // 获取当前函数入口基本块
     LLVMBlock entry_block = llvmIR.GetBlock(this_function, 0);
 
+    // 获取形式参数的 LLVM 类型
+    BasicInstruction::LLVMType llvm_type = Type2LLVM(this->type_decl);
+
     // 定义形式参数的属性
     VarAttribute param_attr;
     param_attr.type = this->type_decl;
 
-    // 获取形式参数的 LLVM 类型
-    BasicInstruction::LLVMType llvm_type = Type2LLVM(this->type_decl);
-
     // 判断是否是数组
-    if (this->dims != nullptr) {
-        // 数组参数处理
-        this_function->InsertFormal(AllocaInstruction::LLVMType::PTR);
-
-        // 保存数组的维度信息
-        for (size_t i = 1; i < this->dims->size(); ++i) {
-            param_attr.dims.push_back(this->dims->at(i)->attribute.V.val.IntVal);
-        }
-
-        // 更新符号表和数组表
-        //int index = irgen_table.register_counter + 1;  // 当前参数索引
-        FormalArrayTable[index] = 1;
-        irgen_table.symbol_table.add_Symbol(this->name, index);
-        RegTable[index] = param_attr;
-    } else {
+    if (this->dims == nullptr) {
         // 普通变量参数处理
         this_function->InsertFormal(llvm_type);
 
@@ -1245,6 +1173,20 @@ void __FuncFParam::codeIR() {
         // 更新符号表和寄存器表
         irgen_table.symbol_table.add_Symbol(this->name, param_reg);
         RegTable[param_reg] = param_attr;
+    } else {
+        // 数组参数处理
+        this_function->InsertFormal(AllocaInstruction::LLVMType::PTR);
+
+        // 保存数组的维度信息
+        for (size_t i = 1; i < this->dims->size(); ++i) {
+            param_attr.dims.push_back(this->dims->at(i)->attribute.V.val.IntVal);
+        }
+
+        // 更新符号表和数组表
+        //int index = irgen_table.register_counter + 1;  // 当前参数索引
+        irgen_table.symbol_table.add_Symbol(this->name, index);
+        FormalArrayTable[index] = 1;
+        RegTable[index] = param_attr;
     }
     // TODO("FunctionFParam CodeIR");
 }
@@ -1253,19 +1195,21 @@ void __FuncDef::codeIR() {
     // 进入符号表作用域
     irgen_table.symbol_table.enter_scope();
 
-    // 设置返回类型和函数名称
-    BasicInstruction::LLVMType func_ret_type = Type2LLVM(return_type);
-    FuncDefInstruction function_instruction = new FunctionDefineInstruction(func_ret_type, name->get_string());
-    
-    // 清空寄存器和数组表
-    irgen_table.register_counter = -1;
-    RegTable.clear();
+    // 清空形式参数数组表
     FormalArrayTable.clear();
-    function_label = 0;
-    label_count = -1;
-    this_function = function_instruction;
-    irgen_table.function_returntype = return_type;
 
+    // 初始化标签计数器
+    label_count = -1;
+
+    // 创建函数定义指令，包含返回类型和函数名称
+    FuncDefInstruction function_instruction = new FunctionDefineInstruction(Type2LLVM(return_type), name->get_string());
+   
+    // 将当前函数指针设置为新定义的函数
+    this_function = function_instruction;
+
+    // 设置当前函数的返回类型
+    irgen_table.function_returntype = return_type;
+    
     // 新建函数并创建入口块
     llvmIR.NewFunction(this_function);
     LLVMBlock entry_block = llvmIR.NewBlock(this_function, ++label_count);
@@ -1306,9 +1250,6 @@ void __FuncDef::codeIR() {
             }
         }
     }
-    // 更新最大寄存器号和标签号
-    max_reg_map[function_instruction] = irgen_table.register_counter;
-    max_label_map[function_instruction] = label_count;
 
     // 退出符号表作用域
     irgen_table.symbol_table.exit_scope();
@@ -1399,8 +1340,3 @@ void AddLibFunctionDeclare() {
     llvm_smin->InsertFormal(BasicInstruction::I32);
     llvmIR.function_declare.push_back(llvm_smin);
 }
-
-
-
-
-

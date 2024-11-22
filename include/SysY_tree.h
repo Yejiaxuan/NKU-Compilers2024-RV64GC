@@ -206,8 +206,8 @@ public:
 class FuncRParams : public __Expression {
 public:
     std::vector<Expression> *params{};
-    
-    std::vector<std::pair<BasicInstruction::LLVMType, Operand>> args;
+    std::vector<std::pair<BasicInstruction::LLVMType, Operand>> call_args;
+    Symbol function_name;
     FuncRParams(std::vector<Expression> *p) : params(p) {}
     void codeIR();
     void TypeCheck();
