@@ -14,6 +14,8 @@ Operand current_strptr = nullptr;
 std::map<Symbol, int> GlobalTable;
 std::map<int, VarAttribute> RegTable;
 std::map<int, int> FormalArrayTable;
+std::map<FuncDefInstruction, int> max_label_map{};
+std::map<FuncDefInstruction, int> max_reg_map{};
 int max_reg = -1;
 int label_count = -1;
 void AddLibFunctionDeclare();
@@ -553,6 +555,34 @@ void FuncRParams::codeIR() {
 void Func_call::codeIR() {
     // 获取当前块和函数上下文
     LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
+
+    // 特殊处理 "putf" 函数
+    if (name->get_string() == "putf") {
+        std::vector<std::pair<BasicInstruction::LLVMType, Operand>> call_args;
+
+        // 检查参数是否存在
+        if (funcr_params != nullptr) {
+            auto func_params = dynamic_cast<FuncRParams*>(funcr_params);
+            if (func_params && func_params->params && !func_params->params->empty()) {
+                auto first_param = func_params->params->at(0);
+                first_param->codeIR(); // 生成第一个参数代码
+                call_args.emplace_back(BasicInstruction::PTR, irgen_table.string_operand);
+
+                // 处理后续参数
+                for (size_t idx = 1; idx < func_params->params->size(); ++idx) {
+                    auto param = func_params->params->at(idx);
+                    param->codeIR();
+                    Type::ty actual_type = param->attribute.T.type;
+                    call_args.emplace_back(Type2LLVM(actual_type), GetNewRegOperand(irgen_table.register_counter));
+                }
+            }
+        }
+
+        // 调用 "putf"
+        IRgenCallVoid(current_block, BasicInstruction::VOID, call_args, name->get_string());
+        return;
+    }
+    // 普通函数处理
     auto return_type = semant_table.FunctionTable[name]->return_type;
     auto llvm_ret_type = Type2LLVM(return_type);
 
@@ -1250,7 +1280,9 @@ void __FuncDef::codeIR() {
             }
         }
     }
-
+    // 更新最大寄存器号和标签号
+    max_reg_map[function_instruction] = irgen_table.register_counter;
+    max_label_map[function_instruction] = label_count;
     // 退出符号表作用域
     irgen_table.symbol_table.exit_scope();
     // TODO("FunctionDef CodeIR");
