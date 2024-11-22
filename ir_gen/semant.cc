@@ -421,18 +421,18 @@ void MulExp_div::TypeCheck() {
             switch(unary_exp->attribute.T.type) {
                 case Type::INT:    // int / int
                     attribute.T.type = Type::INT;
-                    if (unary_exp->attribute.V.ConstTag) {
+                    if (attribute.V.ConstTag) {
                         // 除数为0检查
                         if (unary_exp->attribute.V.val.IntVal == 0) {
                             error_msgs.push_back("Division by zero in line " + 
                                                std::to_string(line_number) + "\n");
-                            break;
                             attribute.T.type = Type::VOID;
                         } else {
                             attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal / 
                                                    unary_exp->attribute.V.val.IntVal;
                         }
                     }
+                    break;
                     
                 case Type::FLOAT:  // int / float
                     attribute.T.type = Type::FLOAT;
@@ -1995,6 +1995,7 @@ std::map<std::string, VarAttribute> ConstGlobalMap;
 std::map<std::string, VarAttribute> StaticGlobalMap; 
 
 extern BasicInstruction::LLVMType Type2LLVM(Type::ty type);
+
 
 // Reference: https://github.com/yuhuifishash/SysY/blob/master/ir_gen/semant.cc line52-line166
 int FindMinDimStep(const VarAttribute &val, int relativePos, int dimsIdx, int &max_subBlock_sz) {
