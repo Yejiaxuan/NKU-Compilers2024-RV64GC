@@ -1896,10 +1896,21 @@ void FloatConst::TypeCheck() {
 
 void StringConst::TypeCheck() { 
     attribute.T.type = Type::PTR;
-    GlobalStrCnt += 1;
-    auto GlobalStrI = new GlobalStringConstInstruction(str->get_string(), ".str" + std::to_string(GlobalStrCnt));
-    llvmIR.global_def.push_back(GlobalStrI);
-    semant_table.GlobalStrTable[str] = GlobalStrCnt;
+    std::string label = ".str" + std::to_string(++GlobalStrCnt);
+    GlobalStringConstInstruction* strInst = nullptr;
+    if (str && str->get_string().length() > 0) {
+        strInst = new GlobalStringConstInstruction(str->get_string(),label);
+    } else {
+        strInst = new GlobalStringConstInstruction("",label);
+    }
+    if (strInst) {
+        llvmIR.global_def.push_back(strInst);
+    }
+    if (str) {
+        semant_table.GlobalStrTable.insert(
+            std::make_pair(str, GlobalStrCnt)
+        );
+    }
     //TODO("StringConst Semant"); 
 }
 
@@ -1911,7 +1922,7 @@ void PrimaryExp_branch::TypeCheck() {
 void assign_stmt::TypeCheck() { 
     lval->TypeCheck();
     exp->TypeCheck();
-    ((Lval *)lval)->is_left = true;    // assign_stmt -> leftvalue
+    ((Lval *)lval)->is_left = true;
     if (exp->attribute.T.type == Type::VOID) {
         error_msgs.push_back("void type can not be assign_stmt's expression " + std::to_string(line_number) + "\n");
     }
@@ -2422,7 +2433,6 @@ void CompUnit_Decl::TypeCheck() {
         StaticGlobalMap[def->GetName()->get_string()] = val;
         semant_table.GlobalTable[def->GetName()] = val;
 
-        // add Global Decl llvm ins
         BasicInstruction::LLVMType lltype = Type2LLVM(type_decl);
 
         Instruction globalDecl;
