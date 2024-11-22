@@ -94,12 +94,10 @@ RegOperand *GetNewRegOperand(int RegNo);
 // eg. you can use fptosi instruction to converse float to int
 // eg. you can use zext instruction to converse bool to int
 // 修改后的函数定义
-void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int src) {
+void TypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int src) {
     if (type_src == type_dst) {
         return;
     } else {
-        //irgen_table.register_counter++;
-        //int dst = irgen_table.register_counter; // 自动分配一个新的寄存器作为目标寄存器
         if (type_src == Type::FLOAT && type_dst == Type::INT) {
             IRgenFptosi(B, src, ++irgen_table.register_counter);
         } else if (type_src == Type::INT && type_dst == Type::FLOAT) {
@@ -114,8 +112,6 @@ void IRgenTypeConverse(LLVMBlock B, Type::ty type_src, Type::ty type_dst, int sr
             // BOOL to FLOAT conversion (true to 1.0, false to 0.0)
             IRgenZextI1toI32(B, src, ++irgen_table.register_counter);
             src = irgen_table.register_counter;
-            //irgen_table.register_counter++;
-            //dst = irgen_table.register_counter;
             IRgenSitofp(B, src, ++irgen_table.register_counter);
         } 
     }
@@ -357,77 +353,90 @@ void EqExp_neq::codeIR() {
 
 // short circuit &&
 void LAndExp_and::codeIR() {
-    // 创建新标签
-    int left_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    // 创建一个新标签，表示左操作数的 true 分支块
+    int leftOperandLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+
     // 生成左操作数的代码
-    landexp->true_label = left_label;
-    landexp->false_label = this->false_label;
-    landexp->codeIR();
-    // 获取当前函数的基本块
-    LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
-    IRgenTypeConverse(current_block, landexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+    landexp->true_label = leftOperandLabel; // 如果左操作数为 true，则继续到下一个块
+    landexp->false_label = this->false_label; // 如果左操作数为 false，则短路
+    landexp->codeIR(); // 递归生成左操作数的 IR 代码
 
-    // 如果左操作数为 false，跳转到结束块（短路逻辑）
-    IRgenBrCond(current_block, irgen_table.register_counter, left_label, this->false_label);
+    // 获取当前块，用于生成跳转指令
+    LLVMBlock currentBlock = llvmIR.GetBlock(this_function, function_label);
 
-    // 处理 true_label，生成右操作数的代码
-    function_label = left_label;
-    LLVMBlock true_block = llvmIR.GetBlock(this_function, function_label);
-    eqexp->true_label = this->true_label;
-    eqexp->false_label = this->false_label;
+    // 将左操作数的类型转换为布尔值（如果不是布尔值）
+    int reg1 = irgen_table.register_counter;
+    TypeConverse(currentBlock, landexp->attribute.T.type, Type::BOOL, reg1);
+
+    // 根据左操作数的结果生成条件跳转：
+    // - 如果为 true，跳转到左操作数的 true 分支（leftOperandLabel）
+    // - 如果为 false，跳转到 false_label（结束块）
+    IRgenBrCond(currentBlock, irgen_table.register_counter, leftOperandLabel, this->false_label);
+
+    // 处理 true_label：在 true_label 块中生成右操作数的代码
+    function_label = leftOperandLabel;
+    LLVMBlock trueBlock = llvmIR.GetBlock(this_function, function_label);
+
+    // 设置右操作数的 true 和 false 分支标签，与整体的标签一致
+    eqexp->true_label = this->true_label; // 如果右操作数为 true，则跳转到整体的 true_label
+    eqexp->false_label = this->false_label; // 如果右操作数为 false，则跳转到整体的 false_label
+
+    // 递归生成右操作数的 IR 代码
     eqexp->codeIR();
-    IRgenTypeConverse(true_block, eqexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
-    /*// 跳转到结束块
-    IRgenBRUnCond(true_block, end_label);
+    // 将右操作数的类型转换为布尔值（如果不是布尔值）
+    int reg2 = irgen_table.register_counter;
+    TypeConverse(trueBlock, eqexp->attribute.T.type, Type::BOOL, reg2);
 
-    // 处理结束块，将最终结果保存在 attribute.result_reg
-    function_label = end_label;
-    LLVMBlock end_block = llvmIR.GetBlock(this_function, end_label);
-    attribute.result_reg = irgen_table.register_counter;
-    //this->attribute.result_reg = final_result;
-    this->attribute.T.type = Type::BOOL;*/
-    // 设置最终结果
+    // 设置最终结果寄存器为右操作数的结果寄存器
     this->attribute.result_reg = eqexp->attribute.result_reg;
+
+    // 设置最终结果类型为布尔值
     this->attribute.T.type = Type::BOOL;
     // TODO("LAndExpAnd CodeIR");
 }
 
 // short circuit ||
 void LOrExp_or::codeIR() {
-    // 创建新标签
-    int left_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    // 创建一个新标签，表示左操作数的 false 分支（右操作数的入口块）
+    int leftOperandLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
 
     // 生成左操作数的代码
-    lorexp->true_label = this->true_label;
-    lorexp->false_label = left_label;
-    lorexp->codeIR();
-    // 获取当前函数的基本块
+    lorexp->true_label = this->true_label;  // 如果左操作数为 true，直接跳转到整体的 true_label
+    lorexp->false_label = leftOperandLabel;      // 如果左操作数为 false，则继续计算右操作数
+    lorexp->codeIR();                      // 递归生成左操作数的 IR 代码
+
+    // 获取当前基本块，用于生成跳转指令
     LLVMBlock current_block = llvmIR.GetBlock(this_function, function_label);
-    IRgenTypeConverse(current_block, lorexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
-    // 如果左操作数为 true，跳转到结束块（短路逻辑）
-    IRgenBrCond(current_block, irgen_table.register_counter, this->true_label, left_label);
+    // 将左操作数的结果转换为布尔类型（如有必要）
+    int reg1 = irgen_table.register_counter;
+    TypeConverse(current_block, lorexp->attribute.T.type, Type::BOOL, reg1);
 
-    // 处理 false_label，生成右操作数的代码
-    function_label = left_label;
+    // 根据左操作数的结果生成条件跳转：
+    // - 如果为 true，直接短路跳转到 true_label
+    // - 如果为 false，跳转到右操作数的入口块（leftOperandLabell）
+    IRgenBrCond(current_block, irgen_table.register_counter, this->true_label, leftOperandLabel);
+
+    // 处理 false_label：生成右操作数的代码
+    function_label = leftOperandLabel;           // 更新函数标签到右操作数的入口块
     LLVMBlock false_block = llvmIR.GetBlock(this_function, function_label);
-    landexp->true_label = this->true_label;
-    landexp->false_label = this->false_label;
+
+    // 设置右操作数的 true 和 false 分支标签
+    landexp->true_label = this->true_label;  // 如果右操作数为 true，跳转到整体的 true_label
+    landexp->false_label = this->false_label; // 如果右操作数为 false，跳转到整体的 false_label
+
+    // 递归生成右操作数的 IR 代码
     landexp->codeIR();
-    IRgenTypeConverse(false_block, landexp->attribute.T.type, Type::BOOL, irgen_table.register_counter);
 
-    /*// 跳转到结束块
-    IRgenBRUnCond(false_block, end_label);
+    // 将右操作数的结果转换为布尔类型（如有必要）
+    int reg2 = irgen_table.register_counter;
+    TypeConverse(false_block, landexp->attribute.T.type, Type::BOOL, reg2);
 
-    // 处理结束块，将最终结果保存在 attribute.result_reg
-    function_label = end_label;
-    LLVMBlock end_block = llvmIR.GetBlock(this_function, end_label);
-    attribute.result_reg = irgen_table.register_counter;
-    //this->attribute.result_reg = final_result;
-    this->attribute.T.type = Type::BOOL;*/
-    // 设置最终结果
+    // 设置最终结果寄存器为右操作数的结果寄存器
     this->attribute.result_reg = landexp->attribute.result_reg;
+
+    // 设置最终结果的类型为布尔类型
     this->attribute.T.type = Type::BOOL;
     // TODO("LOrExpOr CodeIR");
 }
@@ -436,11 +445,10 @@ void ConstExp::codeIR() { addexp->codeIR(); }
 
 void Lval::codeIR() {
     LLVMBlock B = llvmIR.GetBlock(this_function, function_label);
+    int alloca_reg = irgen_table.symbol_table.lookup(name);
     Operand ptr_operand;
     VarAttribute lval_attribute;
     bool formal_array_tag = false;
-    int alloca_reg = irgen_table.symbol_table.lookup(name);
-
     // 判断是全局变量还是局部变量
     if (alloca_reg == -1) {
         ptr_operand = GetNewGlobalOperand(name->get_string());
@@ -464,7 +472,7 @@ void Lval::codeIR() {
                 int idx_reg = irgen_table.register_counter;
                 if (dim_exp->attribute.T.type != Type::INT) {
                     // 需要进行类型转换
-                    IRgenTypeConverse(B, dim_exp->attribute.T.type, Type::INT, idx_reg);
+                    TypeConverse(B, dim_exp->attribute.T.type, Type::INT, idx_reg);
                     int converted_reg = irgen_table.register_counter; // 转换后的寄存器编号
                     array_indexs.push_back(GetNewRegOperand(converted_reg));
                 } else {
@@ -475,12 +483,12 @@ void Lval::codeIR() {
         }
 
         // 如果是形参数组，第一个索引不需要 0
-        if (formal_array_tag) {
-            // 形参数组，第一个索引不需要 0
-            IRgenGetElementptrIndexI32(B, lltype, ++irgen_table.register_counter, ptr_operand, lval_attribute.dims, array_indexs);
-        } else {
+        if (!formal_array_tag) {
             // 普通数组，需要在索引前加一个 0
             array_indexs.insert(array_indexs.begin(), new ImmI32Operand(0));
+            IRgenGetElementptrIndexI32(B, lltype, ++irgen_table.register_counter, ptr_operand, lval_attribute.dims, array_indexs);
+        } else {
+            // 形参数组，第一个索引不需要 0
             IRgenGetElementptrIndexI32(B, lltype, ++irgen_table.register_counter, ptr_operand, lval_attribute.dims, array_indexs);
         }
         ptr_operand = GetNewRegOperand(irgen_table.register_counter);
@@ -734,7 +742,7 @@ void assign_stmt::codeIR() {
     lval->codeIR();
     exp->codeIR();
     int reg = irgen_table.register_counter;
-    IRgenTypeConverse(block, exp->attribute.T.type, lval->attribute.T.type, reg);
+    TypeConverse(block, exp->attribute.T.type, lval->attribute.T.type, reg);
     reg = irgen_table.register_counter;
     IRgenStore(block, Type2LLVM(lval->attribute.T.type), GetNewRegOperand(reg), ((Lval *)lval)->ptr);
     // TODO("AssignStmt CodeIR");
@@ -762,7 +770,8 @@ void ifelse_stmt::codeIR() {
     Cond->false_label = elseLabel;
     Cond->codeIR(); // 生成条件表达式的中间代码
     LLVMBlock currentBlock = llvmIR.GetBlock(this_function, function_label);
-    IRgenTypeConverse(currentBlock, Cond->attribute.T.type, Type::BOOL, irgen_table.register_counter); // 转换为布尔类型
+    int reg = irgen_table.register_counter;
+    TypeConverse(currentBlock, Cond->attribute.T.type, Type::BOOL, reg); // 转换为布尔类型
     IRgenBrCond(currentBlock, irgen_table.register_counter, ifLabel, elseLabel); // 根据条件跳转
 
     // if 分支块生成
@@ -792,7 +801,8 @@ void if_stmt::codeIR() {
     Cond->false_label = endLabel;
     Cond->codeIR();
     LLVMBlock block1 = llvmIR.GetBlock(this_function, function_label);
-    IRgenTypeConverse(block1, Cond->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+    int reg = irgen_table.register_counter;
+    TypeConverse(block1, Cond->attribute.T.type, Type::BOOL, reg);
     IRgenBrCond(block1, irgen_table.register_counter, ifLabel, endLabel);
 
     function_label = ifLabel;
@@ -822,7 +832,8 @@ void while_stmt::codeIR() {
     Cond->false_label = endLabel;
     Cond->codeIR();
     LLVMBlock block2 = llvmIR.GetBlock(this_function, function_label);
-    IRgenTypeConverse(block2, Cond->attribute.T.type, Type::BOOL, irgen_table.register_counter);
+    int reg = irgen_table.register_counter;
+    TypeConverse(block2, Cond->attribute.T.type, Type::BOOL, reg);
     IRgenBrCond(block2, irgen_table.register_counter, bodyLabel, endLabel);
 
     function_label = bodyLabel;
@@ -854,7 +865,8 @@ void break_stmt::codeIR() {
 void return_stmt::codeIR() {
     return_exp->codeIR();
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
-    IRgenTypeConverse(block, return_exp->attribute.T.type, irgen_table.function_returntype, irgen_table.register_counter);
+    int reg = irgen_table.register_counter;
+    TypeConverse(block, return_exp->attribute.T.type, irgen_table.function_returntype, reg);
     IRgenRetReg(block, Type2LLVM(irgen_table.function_returntype), irgen_table.register_counter);
     // TODO("ReturnStmt CodeIR");
 }
@@ -921,7 +933,7 @@ void RecursiveArrayInitIR(LLVMBlock block, const std::vector<int>& dims, int arr
         if (iv->IsExp()) {
             iv->codeIR();
             int init_val_reg = irgen_table.register_counter;
-            IRgenTypeConverse(block, iv->attribute.T.type, ArrayType, init_val_reg);
+            TypeConverse(block, iv->attribute.T.type, ArrayType, init_val_reg);
             init_val_reg = irgen_table.register_counter;
 
             int addr_reg = ++irgen_table.register_counter;
@@ -1014,7 +1026,8 @@ void VarDef::codeIR() {
         InitVal initializer = GetInit();
         if (initializer != nullptr) {
             initializer->codeIR();
-            IRgenTypeConverse(InitB, initializer->attribute.T.type, current_type_decl, irgen_table.register_counter);
+            int reg = irgen_table.register_counter;
+            TypeConverse(InitB, initializer->attribute.T.type, current_type_decl, reg);
             Operand value_operand = GetNewRegOperand(irgen_table.register_counter);
             IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
         } else {
@@ -1094,7 +1107,8 @@ void ConstDef::codeIR() {
         assert(initializer != nullptr);
 
         initializer->codeIR();
-        IRgenTypeConverse(InitB, initializer->attribute.T.type, current_type_decl, irgen_table.register_counter);
+        int reg = irgen_table.register_counter;
+        TypeConverse(InitB, initializer->attribute.T.type, current_type_decl, reg);
         Operand value_operand = GetNewRegOperand(irgen_table.register_counter);
         IRgenStore(InitB, Type2LLVM(current_type_decl), value_operand, GetNewRegOperand(allocation_register));
     } else {

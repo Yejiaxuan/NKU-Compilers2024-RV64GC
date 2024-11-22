@@ -421,18 +421,18 @@ void MulExp_div::TypeCheck() {
             switch(unary_exp->attribute.T.type) {
                 case Type::INT:    // int / int
                     attribute.T.type = Type::INT;
-                    if (attribute.V.ConstTag) {
+                    if (unary_exp->attribute.V.ConstTag) {
                         // 除数为0检查
                         if (unary_exp->attribute.V.val.IntVal == 0) {
                             error_msgs.push_back("Division by zero in line " + 
                                                std::to_string(line_number) + "\n");
+                            break;
                             attribute.T.type = Type::VOID;
                         } else {
                             attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal / 
                                                    unary_exp->attribute.V.val.IntVal;
                         }
                     }
-                    break;
                     
                 case Type::FLOAT:  // int / float
                     attribute.T.type = Type::FLOAT;
