@@ -412,9 +412,36 @@ void MulExp_mul::TypeCheck() {
 void MulExp_div::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
-    
+
     attribute.line_number = line_number;
-    attribute.V.ConstTag = mulexp->attribute.V.ConstTag & unary_exp->attribute.V.ConstTag;
+    // 被除数和除数是否为常量
+    bool numeratorConst = mulexp->attribute.V.ConstTag;
+    bool denominatorConst = unary_exp->attribute.V.ConstTag;
+
+    // 检查除数是否为常量且为0
+    if (denominatorConst) {
+        if (unary_exp->attribute.T.type == Type::INT && unary_exp->attribute.V.val.IntVal == 0) {
+            error_msgs.push_back("Division by zero in line " + 
+                               std::to_string(line_number) + "\n");
+            attribute.T.type = Type::VOID;
+            return;
+        }
+        if (unary_exp->attribute.T.type == Type::FLOAT && unary_exp->attribute.V.val.FloatVal == 0.0f) {
+            error_msgs.push_back("Division by zero in line " + 
+                               std::to_string(line_number) + "\n");
+            attribute.T.type = Type::VOID;
+            return;
+        }
+        if (unary_exp->attribute.T.type == Type::BOOL && !unary_exp->attribute.V.val.BoolVal) {
+            error_msgs.push_back("Division by zero in line " + 
+                               std::to_string(line_number) + "\n");
+            attribute.T.type = Type::VOID;
+            return;
+        }
+    }
+
+    // 更新 ConstTag 仅在被除数和除数都是常量时为真
+    attribute.V.ConstTag = numeratorConst && denominatorConst;
 
     switch(mulexp->attribute.T.type) {
         case Type::INT:
@@ -422,42 +449,24 @@ void MulExp_div::TypeCheck() {
                 case Type::INT:    // int / int
                     attribute.T.type = Type::INT;
                     if (attribute.V.ConstTag) {
-                        // 除数为0检查
-                        if (unary_exp->attribute.V.val.IntVal == 0) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal / 
-                                                   unary_exp->attribute.V.val.IntVal;
-                        }
+                        attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal / 
+                                               unary_exp->attribute.V.val.IntVal;
                     }
                     break;
                     
                 case Type::FLOAT:  // int / float
                     attribute.T.type = Type::FLOAT;
                     if (attribute.V.ConstTag) {
-                        if (unary_exp->attribute.V.val.FloatVal == 0.0f) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.FloatVal = (float)mulexp->attribute.V.val.IntVal / 
-                                                     unary_exp->attribute.V.val.FloatVal;
-                        }
+                        attribute.V.val.FloatVal = (float)mulexp->attribute.V.val.IntVal / 
+                                                 unary_exp->attribute.V.val.FloatVal;
                     }
                     break;
                     
                 case Type::BOOL:   // int / bool
                     attribute.T.type = Type::INT;
                     if (attribute.V.ConstTag) {
-                        if (!unary_exp->attribute.V.val.BoolVal) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal;
-                        }
+                        attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal / 
+                                               (unary_exp->attribute.V.val.BoolVal ? 1 : 0);
                     }
                     break;
                     
@@ -474,41 +483,24 @@ void MulExp_div::TypeCheck() {
                 case Type::INT:    // float / int
                     attribute.T.type = Type::FLOAT;
                     if (attribute.V.ConstTag) {
-                        if (unary_exp->attribute.V.val.IntVal == 0) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal / 
-                                                     (float)unary_exp->attribute.V.val.IntVal;
-                        }
+                        attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal / 
+                                                 (float)unary_exp->attribute.V.val.IntVal;
                     }
                     break;
                     
                 case Type::FLOAT:  // float / float
                     attribute.T.type = Type::FLOAT;
                     if (attribute.V.ConstTag) {
-                        if (unary_exp->attribute.V.val.FloatVal == 0.0f) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal / 
-                                                     unary_exp->attribute.V.val.FloatVal;
-                        }
+                        attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal / 
+                                                 unary_exp->attribute.V.val.FloatVal;
                     }
                     break;
                     
                 case Type::BOOL:   // float / bool
                     attribute.T.type = Type::FLOAT;
                     if (attribute.V.ConstTag) {
-                        if (!unary_exp->attribute.V.val.BoolVal) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal;
-                        }
+                        attribute.V.val.FloatVal = mulexp->attribute.V.val.FloatVal / 
+                                                 (unary_exp->attribute.V.val.BoolVal ? 1.0f : 0.0f);
                     }
                     break;
                     
@@ -525,41 +517,24 @@ void MulExp_div::TypeCheck() {
                 case Type::INT:    // bool / int
                     attribute.T.type = Type::INT;
                     if (attribute.V.ConstTag) {
-                        if (unary_exp->attribute.V.val.IntVal == 0) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.IntVal = (mulexp->attribute.V.val.BoolVal ? 1 : 0) / 
-                                                   unary_exp->attribute.V.val.IntVal;
-                        }
+                        attribute.V.val.IntVal = (mulexp->attribute.V.val.BoolVal ? 1 : 0) / 
+                                               unary_exp->attribute.V.val.IntVal;
                     }
                     break;
                     
                 case Type::FLOAT:  // bool / float
                     attribute.T.type = Type::FLOAT;
                     if (attribute.V.ConstTag) {
-                        if (unary_exp->attribute.V.val.FloatVal == 0.0f) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.FloatVal = (mulexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) / 
-                                                     unary_exp->attribute.V.val.FloatVal;
-                        }
+                        attribute.V.val.FloatVal = (mulexp->attribute.V.val.BoolVal ? 1.0f : 0.0f) / 
+                                                 unary_exp->attribute.V.val.FloatVal;
                     }
                     break;
                     
                 case Type::BOOL:   // bool / bool
                     attribute.T.type = Type::INT;
                     if (attribute.V.ConstTag) {
-                        if (!unary_exp->attribute.V.val.BoolVal) {
-                            error_msgs.push_back("Division by zero in line " + 
-                                               std::to_string(line_number) + "\n");
-                            attribute.T.type = Type::VOID;
-                        } else {
-                            attribute.V.val.IntVal = mulexp->attribute.V.val.BoolVal ? 1 : 0;
-                        }
+                        attribute.V.val.IntVal = (mulexp->attribute.V.val.BoolVal ? 1 : 0) / 
+                                               (unary_exp->attribute.V.val.BoolVal ? 1 : 0);
                     }
                     break;
                     
@@ -583,49 +558,59 @@ void MulExp_div::TypeCheck() {
 void MulExp_mod::TypeCheck() {
     mulexp->TypeCheck();
     unary_exp->TypeCheck();
-    
-    attribute.line_number = line_number;
-    attribute.V.ConstTag = mulexp->attribute.V.ConstTag & unary_exp->attribute.V.ConstTag;
 
-    switch(mulexp->attribute.T.type) {
+    attribute.line_number = line_number;
+
+    // 被除数和除数是否为常量
+    bool numeratorConst = mulexp->attribute.V.ConstTag;
+    bool denominatorConst = unary_exp->attribute.V.ConstTag;
+
+    // 检查除数是否为常量且为 0
+    if (denominatorConst) {
+        if (unary_exp->attribute.T.type == Type::INT && unary_exp->attribute.V.val.IntVal == 0) {
+            error_msgs.push_back("Modulo by zero in line " +
+                                 std::to_string(line_number) + "\n");
+            attribute.T.type = Type::VOID;
+            return;
+        }
+    }
+
+    // 更新 ConstTag 仅在被除数和除数都是常量时为真
+    attribute.V.ConstTag = numeratorConst && denominatorConst;
+
+    switch (mulexp->attribute.T.type) {
         case Type::INT:
-            switch(unary_exp->attribute.T.type) {
+            switch (unary_exp->attribute.T.type) {
                 case Type::INT:    // int % int
                     attribute.T.type = Type::INT;
                     if (attribute.V.ConstTag) {
                         if (unary_exp->attribute.V.val.IntVal == 0) {
-                            error_msgs.push_back("Modulo by zero in line " + 
-                                               std::to_string(line_number) + "\n");
+                            error_msgs.push_back("Modulo by zero in line " +
+                                                 std::to_string(line_number) + "\n");
                             attribute.T.type = Type::VOID;
                         } else {
-                            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal % 
-                                                   unary_exp->attribute.V.val.IntVal;
+                            attribute.V.val.IntVal = mulexp->attribute.V.val.IntVal %
+                                                     unary_exp->attribute.V.val.IntVal;
                         }
                     }
                     break;
-                    
-                case Type::FLOAT:  // int % float -> error
-                case Type::BOOL:   // int % bool -> error
-                case Type::PTR:    // int % ptr -> error
-                case Type::VOID:   // int % void -> error
+
+                default:           // int % 非整数
                     attribute.T.type = Type::VOID;
-                    error_msgs.push_back("Invalid operands for % in line " + 
-                                       std::to_string(line_number) + "\n");
+                    error_msgs.push_back("Invalid operands for % in line " +
+                                         std::to_string(line_number) + "\n");
                     break;
             }
             break;
-            
-        case Type::FLOAT:  // float % any -> error
-        case Type::BOOL:   // bool % any -> error
-        case Type::PTR:    // ptr % any -> error
-        case Type::VOID:   // void % any -> error
+
+        default:  // 非整数左操作数
             attribute.T.type = Type::VOID;
-            error_msgs.push_back("Invalid operands for % in line " + 
-                               std::to_string(line_number) + "\n");
+            error_msgs.push_back("Invalid operands for % in line " +
+                                 std::to_string(line_number) + "\n");
             break;
     }
-    //TODO("BinaryExp Semant");
 }
+
 
 void RelExp_leq::TypeCheck() {
     relexp->TypeCheck();
@@ -2137,11 +2122,6 @@ void ConstInitVal_exp::TypeCheck() {
 void VarInitVal::TypeCheck() { 
     for (auto init_val : *initval) {
         init_val->TypeCheck();
-        
-        /*// 检查每个初始化值的类型是否匹配变量的类型（例如int、float等）
-        if (init_val->attribute.T.type != attribute.T.type) {
-            error_msgs.push_back("Error: Type mismatch in VarInitVal initializer at line " + std::to_string(line_number) + "\n");
-        }*/
     }
     //TODO("VarInitVal Semant"); 
 }
