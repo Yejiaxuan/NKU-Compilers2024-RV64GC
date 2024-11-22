@@ -889,6 +889,7 @@ void VarInitVal_exp::codeIR() {
     // TODO("VarInitValWithExp CodeIR");
 }
 
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/ir_gen/IRgen.cc line527-line591
 int FindMinDimStepIR(const std::vector<int>& dims, int relativePos, int dimsIdx, int& max_subBlock_sz) {
     int min_dim_step = 1;
     int blockSz = 1;

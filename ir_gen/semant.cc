@@ -1587,7 +1587,7 @@ void ConstExp::TypeCheck() {
     }
 }
 
-
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/ir_gen/IRgen.cc line169-line200
 // 通过偏移量计算多维数组元素的索引值
 int GetArrayIntVal(VarAttribute &val, std::vector<int> &indices) {
     // 计算最终的线性偏移量
@@ -1996,6 +1996,7 @@ std::map<std::string, VarAttribute> StaticGlobalMap;
 
 extern BasicInstruction::LLVMType Type2LLVM(Type::ty type);
 
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/ir_gen/semant.cc line52-line166
 int FindMinDimStep(const VarAttribute &val, int relativePos, int dimsIdx, int &max_subBlock_sz) {
     int min_dim_step = 1;
     int blockSz = 1;
