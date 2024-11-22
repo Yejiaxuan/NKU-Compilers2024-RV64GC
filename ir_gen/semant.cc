@@ -1572,7 +1572,7 @@ void ConstExp::TypeCheck() {
     }
 }
 
-// Reference: https://github.com/yuhuifishash/SysY/blob/master/ir_gen/IRgen.cc line169-line200
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/ir_gen/IRgen.cc line169-line189
 // 通过偏移量计算多维数组元素的索引值
 int GetArrayIntVal(VarAttribute &val, std::vector<int> &indices) {
     // 计算最终的线性偏移量
@@ -1706,54 +1706,89 @@ void Lval::TypeCheck() {
 }
 
 void FuncRParams::TypeCheck() { 
-    if (params != nullptr) {
-        for (auto param : *params) {
-            param->TypeCheck();
-            if (param->attribute.T.type == Type::VOID) {
-                error_msgs.push_back("Function parameter cannot be void type in line " + 
-                    std::to_string(param->GetLineNumber()) + "\n");
-            }
-        }
+    auto param_vector = *params;
+    for (auto param : param_vector) {
+        param->TypeCheck();
     }
+    
     //TODO("FuncRParams Semant"); 
 }
 
+// 辅助函数，将 Type::ty 枚举转换为字符串表示
+std::string type_to_string(Type::ty type) {
+    switch (type) {
+        case Type::VOID: return "void";
+        case Type::INT: return "int";
+        case Type::FLOAT: return "float";
+        case Type::BOOL: return "bool";
+        case Type::PTR: return "ptr";
+        case Type::DOUBLE: return "double";
+        default: return "unknown";
+    }
+}
+
 void Func_call::TypeCheck() {
-    // 1. 检查和处理参数
+    // 获取函数的定义
+    auto it = semant_table.FunctionTable.find(name);
+    if (it == semant_table.FunctionTable.end()) {
+        error_msgs.push_back("Error: Function '" + name->get_string() +
+                             "' is not defined at line " + std::to_string(line_number) + "\n");
+        attribute.T.type = Type::INT; // 假设返回类型为 int，继续分析
+        return;
+    }
+
+    auto func_def = it->second; // 获取函数定义
+
+    // 获取形参数量
+    size_t formals_count = func_def->formals->size();
+
+    // 获取实参数量
+    size_t params_count = 0;
+    FuncRParams* func_r_params = nullptr;
     if (funcr_params != nullptr) {
-        funcr_params->TypeCheck();
-    }
-    
-    int param_count = (funcr_params == nullptr) ? 0 : 
-        ((FuncRParams*)funcr_params)->params->size();
-
-    // 2. 处理内置函数putf
-    if (name->get_string() == "putf") {
-        if (param_count < 1) {
-            error_msgs.push_back("putf requires at least one parameter in line " + 
-                std::to_string(line_number) + "\n");
+        func_r_params = static_cast<FuncRParams*>(funcr_params);
+        if (func_r_params->params != nullptr) {
+            params_count = func_r_params->params->size();
         }
-        return;
     }
 
-    // 3. 检查函数定义
-    auto func_it = semant_table.FunctionTable.find(name);
-    if (func_it == semant_table.FunctionTable.end()) {
-        error_msgs.push_back("Undefined function " + name->get_string() + 
-            " in line " + std::to_string(line_number) + "\n");
-        return;
+    // 检查实参与形参数量是否匹配
+    if (params_count != formals_count) {
+        error_msgs.push_back("Error: Argument count mismatch in function call '" + name->get_string() + "' at line " + std::to_string(line_number) + "\n");
     }
 
-    // 4. 检查参数个数匹配
-    FuncDef func_def = func_it->second;
-    if (func_def->formals->size() != param_count) {
-        error_msgs.push_back("Parameter count mismatch for function " + name->get_string() + 
-            " in line " + std::to_string(line_number) + "\n");
+    // 检查实参类型与形参类型是否一致
+    size_t min_count = std::min(params_count, formals_count);
+    for (size_t i = 0; i < min_count; ++i) {
+        // 对实参进行类型检查
+        (*func_r_params->params)[i]->TypeCheck(); // 访问实际参数
+
+        auto expected_type = func_def->formals->at(i)->type_decl; // 获取形参的类型
+        auto actual_type = (*func_r_params->params)[i]->attribute.T;
+
+        // 隐式类型转换
+        if (actual_type.type == Type::BOOL && expected_type == Type::INT) {
+            actual_type.type = Type::INT;
+        } else if (actual_type.type == Type::INT && expected_type == Type::FLOAT) {
+            actual_type.type = Type::FLOAT;
+        } else if (actual_type.type == Type::BOOL && expected_type == Type::FLOAT) {
+            actual_type.type = Type::FLOAT;
+        } else if (actual_type.type == Type::FLOAT && expected_type == Type::INT) {
+            actual_type.type = Type::INT;
+        }
+
+        // 检查实参类型是否与形参类型一致
+        if (actual_type.type != expected_type && actual_type.type != Type::PTR) {
+            error_msgs.push_back("Error: Type mismatch for argument " + std::to_string(i + 1) +
+                                 " in function call '" + name->get_string() + "' (expected " +
+                                 type_to_string(expected_type) + ", got " +
+                                 type_to_string(actual_type.type) + ") at line " +
+                                 std::to_string(line_number) + "\n");
+        }
     }
 
-    // 5. 设置返回值类型
+    // 设置返回类型为函数定义的返回类型
     attribute.T.type = func_def->return_type;
-    attribute.V.ConstTag = false;
 }
 
 void UnaryExp_plus::TypeCheck() { 

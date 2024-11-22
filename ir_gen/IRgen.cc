@@ -760,119 +760,177 @@ void block_stmt::codeIR() {
 }
 
 void ifelse_stmt::codeIR() {
-    // 创建基本块
-    int ifLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;    // if 分支块
+    // 创建 if, else 和 end 的基本块（标签），每个块对应一个跳转点
+    int ifLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;  // if 分支块
     int elseLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id; // else 分支块
-    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;  // 合并块
+    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;  // 合并块，if 和 else 执行完后都会跳转到这个标签
 
-    // 条件判断部分
-    Cond->true_label = ifLabel;
-    Cond->false_label = elseLabel;
-    Cond->codeIR(); // 生成条件表达式的中间代码
+    // 生成条件判断部分的 IR
+    Cond->true_label = ifLabel;  // 条件为真时跳转到 ifLabel（if 分支）
+    Cond->false_label = elseLabel;  // 条件为假时跳转到 elseLabel（else 分支）
+    Cond->codeIR();  // 生成条件表达式的中间代码，结果会根据条件的真假跳转到对应的分支
+
+    // 获取当前块（目前是条件判断块）
     LLVMBlock currentBlock = llvmIR.GetBlock(this_function, function_label);
+
+    // 获取当前寄存器号
     int reg = irgen_table.register_counter;
-    TypeConverse(currentBlock, Cond->attribute.T.type, Type::BOOL, reg); // 转换为布尔类型
-    IRgenBrCond(currentBlock, irgen_table.register_counter, ifLabel, elseLabel); // 根据条件跳转
 
-    // if 分支块生成
-    function_label = ifLabel;
-    ifstmt->codeIR(); // 生成 if 语句块的中间代码
+    // 如果条件表达式不是布尔类型，则将其转换为布尔类型
+    if (Cond->attribute.T.type != Type::BOOL) {
+        TypeConverse(currentBlock, Cond->attribute.T.type, Type::BOOL, reg);  // 类型转换：将条件表达式的类型转换为布尔类型
+    }
+
+    // 生成条件跳转指令，根据条件的计算结果跳转到 if 或 else 分支
+    IRgenBrCond(currentBlock, irgen_table.register_counter, ifLabel, elseLabel);
+
+    // 处理 if 分支
+    function_label = ifLabel;  // 当前基本块切换到 if 分支块
+    ifstmt->codeIR();  // 生成 if 语句体的 IR
     LLVMBlock ifBlock = llvmIR.GetBlock(this_function, function_label);
-    IRgenBRUnCond(ifBlock, endLabel); // if 块结束后跳转到合并块
+    IRgenBRUnCond(ifBlock, endLabel);  // 在 if 语句体结束后，跳转到合并块 endLabel
 
-    // else 分支块生成
-    function_label = elseLabel;
-    elsestmt->codeIR(); // 生成 else 语句块的中间代码
+    // 处理 else 分支
+    function_label = elseLabel;  // 当前基本块切换到 else 分支块
+    elsestmt->codeIR();  // 生成 else 语句体的 IR
     LLVMBlock elseBlock = llvmIR.GetBlock(this_function, function_label);
-    IRgenBRUnCond(elseBlock, endLabel); // else 块结束后跳转到合并块
+    IRgenBRUnCond(elseBlock, endLabel);  // 在 else 语句体结束后，跳转到合并块 endLabel
 
-    // 合并块生成
-    function_label = endLabel;
+    // 合并块（if 和 else 分支都跳转到这里）
+    function_label = endLabel;  // 当前基本块切换到合并块
     LLVMBlock endBlock = llvmIR.GetBlock(this_function, function_label);
 
     // TODO("IfElseStmt CodeIR");
 }
 
 void if_stmt::codeIR() {
-    int ifLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
-    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    // 创建 if 和 end 的基本块（标签），每个块对应一个跳转点
+    int ifLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;  // if 分支块
+    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;  // 合并块，if 执行完后跳转到该块
 
-    Cond->true_label = ifLabel;
-    Cond->false_label = endLabel;
-    Cond->codeIR();
+    // 设置条件表达式的跳转标签
+    Cond->true_label = ifLabel;  // 条件为真时跳转到 ifLabel（if 分支）
+    Cond->false_label = endLabel;  // 条件为假时跳转到 endLabel（即不执行 if 块，直接跳过）
+    Cond->codeIR();  // 生成条件表达式的中间代码
+
+    // 获取当前块（条件判断块）
     LLVMBlock block1 = llvmIR.GetBlock(this_function, function_label);
+
+    // 获取当前寄存器号
     int reg = irgen_table.register_counter;
-    TypeConverse(block1, Cond->attribute.T.type, Type::BOOL, reg);
+
+    // 如果条件表达式不是布尔类型，则将其转换为布尔类型
+    // 例如，整型或浮点型转换为布尔型（0为假，非0为真）
+    if (Cond->attribute.T.type != Type::BOOL) {
+        TypeConverse(block1, Cond->attribute.T.type, Type::BOOL, reg);  // 类型转换：将条件表达式的类型转换为布尔类型
+    }
+
+    // 生成条件跳转指令，根据条件的真假跳转到 if 或 end（合并块）
     IRgenBrCond(block1, irgen_table.register_counter, ifLabel, endLabel);
 
-    function_label = ifLabel;
-    ifstmt->codeIR();
+    // 处理 if 分支
+    function_label = ifLabel;  // 当前基本块切换到 if 分支块
+    ifstmt->codeIR();  // 生成 if 语句体的 IR
+
+    // 获取 if 语句块的结束块
     LLVMBlock block2 = llvmIR.GetBlock(this_function, function_label);
+
+    // 无条件跳转到合并块 endLabel
     IRgenBRUnCond(block2, endLabel);
 
-    function_label = endLabel;
+    // 合并块（if/else 分支执行完后跳转到这里）
+    function_label = endLabel;  // 当前基本块切换到合并块
+    LLVMBlock endBlock = llvmIR.GetBlock(this_function, function_label);
     // TODO("IfStmt CodeIR");
 }
 
 void while_stmt::codeIR() {
-    int judgeLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
-    int bodyLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
-    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;
+    // 创建循环中的基本块标签
+    int judgeLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;  // 条件判断块
+    int bodyLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;   // 循环体块
+    int endLabel = llvmIR.NewBlock(this_function, ++label_count)->block_id;    // 循环结束块
 
+    // 保存当前的循环开始和结束标签，以便在循环外部恢复
     int tempStartLabel = irgen_table.loop_start_label;
     int tempEndLabel = irgen_table.loop_end_label;
-    irgen_table.loop_start_label = judgeLabel;
-    irgen_table.loop_end_label = endLabel;
+    irgen_table.loop_start_label = judgeLabel;  // 循环开始标签指向条件判断块
+    irgen_table.loop_end_label = endLabel;     // 循环结束标签指向循环外部块
 
+    // 初始无条件跳转到条件判断块
     LLVMBlock block1 = llvmIR.GetBlock(this_function, function_label);
-    IRgenBRUnCond(block1, judgeLabel);
+    IRgenBRUnCond(block1, judgeLabel);  // 无条件跳转到条件判断块
 
+    // 生成条件判断块的 IR
     function_label = judgeLabel;
-    Cond->true_label = bodyLabel;
-    Cond->false_label = endLabel;
-    Cond->codeIR();
+    Cond->true_label = bodyLabel;  // 条件为真时跳转到循环体块
+    Cond->false_label = endLabel;  // 条件为假时跳转到循环结束块
+    Cond->codeIR();  // 生成条件判断表达式的 IR
+
+    // 获取当前条件判断块的 IR，并执行类型转换（如果必要）
     LLVMBlock block2 = llvmIR.GetBlock(this_function, function_label);
     int reg = irgen_table.register_counter;
-    TypeConverse(block2, Cond->attribute.T.type, Type::BOOL, reg);
+    if (Cond->attribute.T.type != Type::BOOL) {
+        // 如果条件不是布尔类型，则需要转换成布尔类型
+        TypeConverse(block2, Cond->attribute.T.type, Type::BOOL, reg);
+    }
+
+    // 生成条件跳转指令，根据条件判断的结果决定是否进入循环体或结束循环
     IRgenBrCond(block2, irgen_table.register_counter, bodyLabel, endLabel);
 
+    // 生成循环体的 IR
     function_label = bodyLabel;
-    body->codeIR();
-    LLVMBlock block3 = llvmIR.GetBlock(this_function, function_label);
-    IRgenBRUnCond(block3, judgeLabel);
+    body->codeIR();  // 生成循环体代码
 
+    // 获取循环体的结束块，并添加无条件跳转回条件判断块，形成循环
+    LLVMBlock block3 = llvmIR.GetBlock(this_function, function_label);
+    IRgenBRUnCond(block3, judgeLabel);  // 无条件跳转回条件判断块
+
+    // 循环结束后跳转到合并块
     function_label = endLabel;
 
+    // 恢复原来的循环起始和结束标签
     irgen_table.loop_start_label = tempStartLabel;
     irgen_table.loop_end_label = tempEndLabel;
     // TODO("WhileStmt CodeIR");
 }
 
 void continue_stmt::codeIR() {
+    // 获取当前块
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    // 跳转到循环起始块
     IRgenBRUnCond(block, irgen_table.loop_start_label);
+    // 创建新的块，但此处不需要执行任何操作，可能是为了结构上的清晰
     function_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
     // TODO("ContinueStmt CodeIR");
 }
 
 void break_stmt::codeIR() {
+    // 获取当前块
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    // 跳转到循环结束块
     IRgenBRUnCond(block, irgen_table.loop_end_label);
+    // 创建新的块，以便后续使用
     function_label = llvmIR.NewBlock(this_function, ++label_count)->block_id;
     // TODO("BreakStmt CodeIR");
 }
 
 void return_stmt::codeIR() {
+    // 生成返回表达式的 IR
     return_exp->codeIR();
+    // 获取当前块
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    // 获取寄存器计数器，转换类型
     int reg = irgen_table.register_counter;
     TypeConverse(block, return_exp->attribute.T.type, irgen_table.function_returntype, reg);
+    // 返回值的 IR生成
     IRgenRetReg(block, Type2LLVM(irgen_table.function_returntype), irgen_table.register_counter);
     // TODO("ReturnStmt CodeIR");
 }
 
 void return_stmt_void::codeIR() {
+    // 获取当前块
     LLVMBlock block = llvmIR.GetBlock(this_function, function_label);
+    // 生成返回空值（void）的 IR
     IRgenRetVoid(block);
     // TODO("ReturnStmtVoid CodeIR");
 }
@@ -958,6 +1016,16 @@ void RecursiveArrayInitIR(LLVMBlock block, const std::vector<int>& dims, int arr
     }
 }
 
+// 清零数组内存
+void ClearArrayMemory(LLVMBlock block, int allocation_register, int array_size) {
+    CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
+    memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
+    memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
+    memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
+    memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
+    block->InsertInstruction(1, memsetCall);
+}
+
 void VarDef_no_init::codeIR() {
     LLVMBlock B = llvmIR.GetBlock(this_function, 0);
     LLVMBlock InitB = llvmIR.GetBlock(this_function, function_label);
@@ -995,17 +1063,14 @@ void VarDef_no_init::codeIR() {
         // 使用 Alloca 指令为数组分配内存
         IRgenAllocaArray(B, Type2LLVM(current_type_decl), allocation_register, attribute.dims);
 
-        // 初始化数组为零（可选）
+        // 初始化数组为零（可选），这里我们调用 ClearArrayMemory 函数来清零数组内存
         int array_size = 1;
         for (int dim_size : attribute.dims) {
             array_size *= dim_size;
         }
-        CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
-        memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
-        memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
-        memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
-        memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
-        InitB->InsertInstruction(1, memsetCall);
+
+        // 清零数组内存
+        ClearArrayMemory(InitB, allocation_register, array_size);
     }
     // TODO("VarDefNoInit CodeIR");
 }
@@ -1065,12 +1130,7 @@ void VarDef::codeIR() {
             }
 
             // 先将数组内存清零
-            CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
-            memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
-            memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
-            memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
-            memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
-            InitB->InsertInstruction(1, memsetCall);
+            ClearArrayMemory(InitB, allocation_register, array_size);
 
             // 递归初始化数组
             RecursiveArrayInitIR(InitB, attribute.dims, allocation_register, initializer, 0, array_size - 1, 0, current_type_decl);
@@ -1079,12 +1139,9 @@ void VarDef::codeIR() {
             for (int dim_size : attribute.dims) {
                 array_size *= dim_size;
             }
-            CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
-            memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
-            memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
-            memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
-            memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
-            InitB->InsertInstruction(1, memsetCall);
+
+            // 先将数组内存清零
+            ClearArrayMemory(InitB, allocation_register, array_size);
         }
     }
     // TODO("VarDef CodeIR");
@@ -1136,12 +1193,7 @@ void ConstDef::codeIR() {
         }
 
         // 先将数组内存清零
-        CallInstruction *memsetCall = new CallInstruction(BasicInstruction::VOID, nullptr, "llvm.memset.p0.i32");
-        memsetCall->push_back_Parameter(BasicInstruction::PTR, GetNewRegOperand(allocation_register)); // 数组地址
-        memsetCall->push_back_Parameter(BasicInstruction::I8, new ImmI32Operand(0));                   // 初始化值 0
-        memsetCall->push_back_Parameter(BasicInstruction::I32, new ImmI32Operand(array_size * 4));     // 数组字节大小
-        memsetCall->push_back_Parameter(BasicInstruction::I1, new ImmI32Operand(0));                   // 非 volatile
-        InitB->InsertInstruction(1, memsetCall);
+        ClearArrayMemory(InitB, allocation_register, array_size);
 
         // 递归初始化数组
         RecursiveArrayInitIR(InitB, attribute.dims, allocation_register, initializer, 0, array_size - 1, 0, current_type_decl);
