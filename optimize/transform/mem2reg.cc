@@ -225,11 +225,6 @@ void Mem2RegPass::InsertPhi(CFG *C) {
     for (auto [id, vset] : sameblock_vset_map) {
         Mem2RegUseDefInSameBlock(C, vset, id);
     }
-
-    // 对于需要插入 phi 节点的变量（common_allocas），后续处理
-    // TODO: 实现插入 phi 节点的逻辑
-
-
     // TODO("InsertPhi"); 
 }
 
