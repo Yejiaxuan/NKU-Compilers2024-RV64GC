@@ -152,13 +152,13 @@ int main(int argc, char **argv) {
     ast_root->codeIR();
 
     // 当你完成控制流图建立后，将下面注释取消
-    // llvmIR.CFGInit();
+     llvmIR.CFGInit();
 
     // 对于AnalysisPass后续应该由TransformPass更新信息, 维护Analysis的正确性
     // (例如在执行完SimplifyCFG后，需要保证控制流图依旧是正确的)
 
     // 当你完成消除不可达基本块和指令后，将下面注释取消
-    // SimplifyCFGPass(&llvmIR).Execute();
+     SimplifyCFGPass(&llvmIR).Execute();
 
     // 消除不可达基本块和指令在不开启O1的情况也需要进行，原因是这属于基本优化
 
@@ -201,3 +201,4 @@ int main(int argc, char **argv) {
     fout.close();
     return 0;
 }
+

@@ -21,6 +21,7 @@ public:
     // 使用邻接表存图
     std::vector<std::vector<LLVMBlock>> G{};       // control flow graph
     std::vector<std::vector<LLVMBlock>> invG{};    // inverse control flow graph
+    LLVMBlock ret_block;                          // 返回基本块
 
     void BuildCFG();
 
