@@ -1,10 +1,16 @@
 #include "mem2reg.h"
 #include <tuple>
 
+static std::set<Instruction> EraseSet;
+static std::map<int, int> mem2reg_map;
+
 // 检查该条alloca指令是否可以被mem2reg
 // eg. 数组不可以mem2reg
 // eg. 如果该指针直接被使用不可以mem2reg(在SysY一般不可能发生,SysY不支持指针语法)
-void Mem2RegPass::IsPromotable(CFG *C, Instruction AllocaInst) { TODO("IsPromotable"); }
+void Mem2RegPass::IsPromotable(CFG *C, Instruction AllocaInst) {
+
+    // TODO("IsPromotable"); 
+}
 /*
     int a1 = 5,a2 = 3,a3 = 11,b = 4
     return b // a1,a2,a3 is useless
@@ -34,7 +40,22 @@ pseudo IR is:
 // 提示:deque直接在中间删除是O(n)的, 可以先标记要删除的指令, 最后想一个快速的方法统一删除
 void Mem2RegPass::Mem2RegNoUseAlloca(CFG *C, std::set<int> &vset) {
     // this function is used in InsertPhi
-    TODO("Mem2RegNoUseAlloca");
+    for (auto [id, bb] : *C->block_map) {
+        for (auto I : bb->Instruction_list) {
+            if (I->GetOpcode() == BasicInstruction::STORE) {
+                auto StoreI = (StoreInstruction *)I;
+                if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+                    continue;
+                }
+                int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
+                if (vset.find(v) == vset.end()) {
+                    continue;
+                }
+                EraseSet.insert(I);
+            }
+        }
+    }
+    // TODO("Mem2RegNoUseAlloca");
 }
 
 /*
@@ -65,19 +86,64 @@ pseudo IR is:
 // 该函数对你的时间复杂度有一定要求，你需要保证你的时间复杂度小于等于O(nlognlogn), n为该函数的指令数
 void Mem2RegPass::Mem2RegUseDefInSameBlock(CFG *C, std::set<int> &vset, int block_id) {
     // this function is used in InsertPhi
-    TODO("Mem2RegUseDefInSameBlock");
+    std::map<int, int> curr_reg_map;    //<alloca reg, current store value regno>
+    for (auto I : (*C->block_map)[block_id]->Instruction_list) {
+        if (I->GetOpcode() == BasicInstruction::STORE) {
+            auto StoreI = (StoreInstruction *)I;
+            if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+                continue;
+            }
+            int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
+            if (vset.find(v) == vset.end()) {
+                continue;
+            }
+            curr_reg_map[v] = ((RegOperand *)(StoreI->GetValue()))->GetRegNo();
+            EraseSet.insert(I);
+        }
+        if (I->GetOpcode() == BasicInstruction::LOAD) {
+            auto LoadI = (LoadInstruction *)I;
+            if (LoadI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+                continue;
+            }
+            int v = ((RegOperand *)(LoadI->GetPointer()))->GetRegNo();
+            if (vset.find(v) == vset.end()) {
+                continue;
+            }
+            mem2reg_map[((RegOperand *)(LoadI->GetResult()))->GetRegNo()] = curr_reg_map[v];
+            EraseSet.insert(I);
+        }
+    }
+    // TODO("Mem2RegUseDefInSameBlock");
 }
 
 // vset is the set of alloca regno that one store dominators all load instructions
 // 该函数对你的时间复杂度有一定要求，你需要保证你的时间复杂度小于等于O(nlognlogn)
 void Mem2RegPass::Mem2RegOneDefDomAllUses(CFG *C, std::set<int> &vset) {
     // this function is used in InsertPhi
-    TODO("Mem2RegOneDefDomAllUses");
+
+    // TODO("Mem2RegOneDefDomAllUses");
 }
 
-void Mem2RegPass::InsertPhi(CFG *C) { TODO("InsertPhi"); }
+void Mem2RegPass::InsertPhi(CFG *C) {
 
-void Mem2RegPass::VarRename(CFG *C) { TODO("VarRename"); }
+    // TODO("InsertPhi"); 
+}
+
+void Mem2RegPass::VarRename(CFG *C) {
+
+    for (auto [id, bb] : *C->block_map) {
+        auto tmp_Instruction_list = bb->Instruction_list;
+        bb->Instruction_list.clear();
+        for (auto I : tmp_Instruction_list) {
+            if (EraseSet.find(I) != EraseSet.end()) {
+                continue;
+            }
+            bb->InsertInstruction(1, I);
+        }
+    }
+
+    // TODO("VarRename"); 
+}
 
 void Mem2RegPass::Mem2Reg(CFG *C) {
     InsertPhi(C);
