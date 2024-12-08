@@ -455,6 +455,7 @@ private:
     std::vector<std::pair<Operand, Operand>> phi_list;
 
 public:
+    Operand GetResultReg() { return result; }
     PhiInstruction(enum LLVMType type, Operand result, decltype(phi_list) val_labels) {
         this->opcode = LLVMIROpcode::PHI;
         this->type = type;
@@ -466,6 +467,7 @@ public:
         this->type = type;
         this->result = result;
     }
+    void InsertPhi(Operand val, Operand label) { phi_list.push_back(std::make_pair(label, val)); }
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
 };

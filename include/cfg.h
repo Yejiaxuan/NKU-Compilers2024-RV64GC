@@ -12,6 +12,8 @@
 
 class CFG {
 public:
+    int max_reg = 0;
+    int max_label = 0;
     FuncDefInstruction function_def;
 
     /*this is the pointer to the value of LLVMIR.function_block_map

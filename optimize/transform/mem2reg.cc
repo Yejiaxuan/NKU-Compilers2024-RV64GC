@@ -8,6 +8,11 @@ std::map<int, int> def_num;
 std::set<int> no_use_vset, onedom_vset;
 std::map<int, std::set<int>> sameblock_vset_map;
 
+static std::set<int> common_allocas;
+static std::map<PhiInstruction *, int> phi_map;
+// alloca_type_map用于记录alloca变量对应的数据类型，用于插入phi指令时创建正确类型的phi
+static std::map<int, BasicInstruction::LLVMType> alloca_type_map;
+
 // 检查该条alloca指令是否可以被mem2reg
 // eg. 数组不可以mem2reg
 // eg. 如果该指针直接被使用不可以mem2reg(在SysY一般不可能发生,SysY不支持指针语法)
@@ -19,6 +24,7 @@ void Mem2RegPass::IsPromotable(CFG *C, Instruction AllocaInst) {
 
     int v = ((RegOperand *)(AllocaI->GetResult()))->GetRegNo();
     BasicInstruction::LLVMType type = AllocaI->GetDataType();
+    alloca_type_map[v] = type; // 记录该alloca的类型
 
     auto alloca_defs = defs[v];
     auto alloca_uses = uses[v];
@@ -38,8 +44,8 @@ void Mem2RegPass::IsPromotable(CFG *C, Instruction AllocaInst) {
         }
     }
 
-    /*// nextTODO：only def once（之后进阶处理）
-    if (def_num[v] == 1) {  // 仅定义一次
+    // only def once 并且支配所有use
+    /*if (def_num[v] == 1) {  // 仅定义一次
         int block_id = *(alloca_defs.begin());
         bool dom_flag = true;
         for (auto load_BBid : alloca_uses) {
@@ -56,9 +62,8 @@ void Mem2RegPass::IsPromotable(CFG *C, Instruction AllocaInst) {
     }*/
 
 
-
-    /*// nextTODO: insert phi（之后进阶处理）
-    common_allocas.insert(v);
+    // 一般情况，需要插入phi指令
+    /*common_allocas.insert(v);
     EraseSet.insert(AllocaInst);*/
 
     // TODO("IsPromotable"); 
@@ -172,7 +177,39 @@ void Mem2RegPass::Mem2RegUseDefInSameBlock(CFG *C, std::set<int> &vset, int bloc
 // 该函数对你的时间复杂度有一定要求，你需要保证你的时间复杂度小于等于O(nlognlogn)
 void Mem2RegPass::Mem2RegOneDefDomAllUses(CFG *C, std::set<int> &vset) {
     // this function is used in InsertPhi
-
+    std::map<int, int> v_result_map;
+    for (auto [id, bb] : *C->block_map) {
+        for (auto I : bb->Instruction_list) {
+            if (I->GetOpcode() == BasicInstruction::STORE) {
+                auto StoreI = (StoreInstruction *)I;
+                if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+                    continue;
+                }
+                int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
+                if (vset.find(v) == vset.end()) {
+                    continue;
+                }
+                v_result_map[v] = ((RegOperand *)(StoreI->GetValue()))->GetRegNo();
+                EraseSet.insert(I);
+            }
+        }
+    }
+    for (auto [id, bb] : *C->block_map) {
+        for (auto I : bb->Instruction_list) {
+            if (I->GetOpcode() == BasicInstruction::LOAD) {
+                auto LoadI = (LoadInstruction *)I;
+                if (LoadI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+                    continue;
+                }
+                int v = ((RegOperand *)(LoadI->GetPointer()))->GetRegNo();
+                if (vset.find(v) == vset.end()) {
+                    continue;
+                }
+                mem2reg_map[((RegOperand *)(LoadI->GetResult()))->GetRegNo()] = v_result_map[v];
+                EraseSet.insert(I);
+            }
+        }
+    }
     // TODO("Mem2RegOneDefDomAllUses");
 }
 
@@ -184,6 +221,8 @@ void Mem2RegPass::InsertPhi(CFG *C) {
     no_use_vset.clear();
     onedom_vset.clear();
     sameblock_vset_map.clear();
+    common_allocas.clear();
+    phi_map.clear();
 
     // 获取每个变量的定义和使用信息
     for (auto [id, BB] : *C->block_map) {
@@ -215,8 +254,6 @@ void Mem2RegPass::InsertPhi(CFG *C) {
         }
 
         IsPromotable(C, I);
-
-        // nextTODO：insert phi（进阶处理）
     }
 
     // 处理不同情况
@@ -225,10 +262,136 @@ void Mem2RegPass::InsertPhi(CFG *C) {
     for (auto [id, vset] : sameblock_vset_map) {
         Mem2RegUseDefInSameBlock(C, vset, id);
     }
+
+    // 对common_allocas插入phi指令
+    /*for (int v : common_allocas) {
+        std::set<int> F;
+        std::set<int> W = defs[v];
+        BasicInstruction::LLVMType type = alloca_type_map[v];
+        while (!W.empty()) {
+            int BB_X = *W.begin();
+            W.erase(BB_X);
+            for (auto BB_Y : C->DomTree.GetDF(BB_X)) {
+                if (F.find(BB_Y) == F.end()) {
+                    PhiInstruction *PhiI = new PhiInstruction(type, GetNewRegOperand(++C->max_reg));
+                    (*C->block_map)[BB_Y]->InsertInstruction(0, PhiI);
+                    phi_map[PhiI] = v;
+                    F.insert(BB_Y);
+                    if (defs[v].find(BB_Y) == defs[v].end()) {
+                        W.insert(BB_Y);
+                    }
+                }
+            }
+        }
+    }*/
+
     // TODO("InsertPhi"); 
 }
 
+int in_allocas(std::set<int> &S, Instruction I) {
+    if (I->GetOpcode() == BasicInstruction::LOAD) {
+        auto LoadI = (LoadInstruction *)I;
+        if (LoadI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+            return -1;
+        }
+        int pointer = ((RegOperand *)LoadI->GetPointer())->GetRegNo();
+        if (S.find(pointer) != S.end()) {
+            return pointer;
+        }
+    }
+    if (I->GetOpcode() == BasicInstruction::STORE) {
+        auto StoreI = (StoreInstruction *)I;
+        if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+            return -1;
+        }
+        int pointer = ((RegOperand *)StoreI->GetPointer())->GetRegNo();
+        if (S.find(pointer) != S.end()) {
+            return pointer;
+        }
+    }
+    return -1;
+}
+
 void Mem2RegPass::VarRename(CFG *C) {
+    // VarRename过程: 
+    // 思路：使用类似BFS或DFS的方式从入口块开始遍历CFG，为common_allocas变量维护IncomingVals（映射alloca reg到当前可用的value reg）。
+    // 对于每个块中的指令：
+    //   - 如果是load allocas变量，替换为IncomingVals中的值
+    //   - 如果是store到allocas变量，更新IncomingVals[v]
+    //   - 如果是phi指令对应allocas，更新IncomingVals[v]为phi的结果寄存器
+    // 最后，将IncomingVals传递给后继基本块，并为phi指令添加正确的前驱边。
+
+    std::map<int, std::map<int,int>> WorkList; // <BB_id, <alloca_reg, val_reg>>
+    WorkList.insert({0, std::map<int,int>{}});
+    std::vector<int> BBvis;
+    BBvis.resize(C->max_label+1,0);
+
+    while (!WorkList.empty()) {
+        int BB = (*WorkList.begin()).first;
+        auto IncomingVals = (*WorkList.begin()).second;
+        WorkList.erase(BB);
+
+        if (BBvis[BB]) continue;
+        BBvis[BB] = 1;
+
+        // 先对当前BB中的指令进行处理
+        for (auto I : (*C->block_map)[BB]->Instruction_list) {
+            if (I->GetOpcode() == BasicInstruction::LOAD) {
+                auto LoadI = (LoadInstruction *)I;
+                int v = in_allocas(common_allocas, I);
+                if (v >= 0) {
+                    // Load来自common_allocas变量，用IncomingVals[v]替换
+                    EraseSet.insert(LoadI);
+                    mem2reg_map[((RegOperand *)LoadI->GetResult())->GetRegNo()] = IncomingVals[v];
+                }
+            } else if (I->GetOpcode() == BasicInstruction::STORE) {
+                auto StoreI = (StoreInstruction *)I;
+                int v = in_allocas(common_allocas, I);
+                if (v >= 0) {
+                    // store到common_allocas变量，更新IncomingVals[v]
+                    EraseSet.insert(StoreI);
+                    IncomingVals[v] = ((RegOperand *)StoreI->GetValue())->GetRegNo();
+                }
+            } else if (I->GetOpcode() == BasicInstruction::PHI) {
+                auto PhiI = (PhiInstruction *)I;
+                if (EraseSet.find(PhiI) != EraseSet.end()) {
+                    continue;
+                }
+                auto it = phi_map.find(PhiI);
+                if (it != phi_map.end()) {
+                    // 当前phi属于alloca变量
+                    IncomingVals[it->second] = ((RegOperand *)PhiI->GetResultReg())->GetRegNo();
+                }
+            }
+        }
+
+        // 将IncomingVals传递给后继基本块，并为phi指令添加前驱边
+        for (auto succ : C->G[BB]) {
+            int BBv = succ->block_id;
+            // 为后继块中的phi指令添加前驱信息
+            for (auto I : (*C->block_map)[BBv]->Instruction_list) {
+                if (I->GetOpcode() != BasicInstruction::PHI) {
+                    // phi指令均在块开头，遇到非phi即可停止
+                    break;
+                }
+                auto PhiI = (PhiInstruction *)I;
+                auto it = phi_map.find(PhiI);
+                if (it != phi_map.end()) {
+                    int v = it->second;
+                    // 如果当前phi对alloca v有定义，则为phi添加来自BB的前驱值
+                    if (IncomingVals.find(v) == IncomingVals.end()) {
+                        // 若没有IncomingVals[v]，则说明该alloca v在该路径尚未定义过，phi可能可删除
+                        EraseSet.insert(PhiI);
+                    } else {
+                        PhiI->InsertPhi(GetNewRegOperand(IncomingVals[v]), GetNewLabelOperand(BB));
+                    }
+                }
+            }
+            // 将更新后的IncomingVals加入WorkList
+            WorkList.insert({BBv, IncomingVals});
+        }
+    }
+    
     // 处理mem2reg_map链
     for (auto [id, bb] : *C->block_map) {
         for (auto I : bb->Instruction_list) {
@@ -267,11 +430,40 @@ void Mem2RegPass::VarRename(CFG *C) {
 
     EraseSet.clear();
     mem2reg_map.clear();
+    common_allocas.clear();
+    phi_map.clear();
 
     // TODO("VarRename"); 
 }
 
+void Mem2RegInit(CFG *C) {
+    for (auto &[id, bb] : *C->block_map) {
+        auto tmp_list = bb->Instruction_list;
+        bb->Instruction_list.clear();
+        for (auto I : tmp_list) {
+            if (I->GetOpcode() == BasicInstruction::STORE) {
+                auto StoreI = (StoreInstruction *)I;
+                auto val = StoreI->GetValue();
+                if (val->GetOperandType() == BasicOperand::IMMI32) {
+                    auto ArithI =
+                    new ArithmeticInstruction(BasicInstruction::ADD, BasicInstruction::I32, val, new ImmI32Operand(0), GetNewRegOperand(++C->max_reg));
+                    bb->Instruction_list.push_back(ArithI);
+                    StoreI->SetValue(GetNewRegOperand(C->max_reg));
+                } else if (val->GetOperandType() == BasicOperand::IMMF32) {
+                    auto ArithI =
+                    new ArithmeticInstruction(BasicInstruction::FADD, BasicInstruction::FLOAT32, val, new ImmF32Operand(0), GetNewRegOperand(++C->max_reg));
+                    bb->Instruction_list.push_back(ArithI);
+                    StoreI->SetValue(GetNewRegOperand(C->max_reg));
+                }
+            }
+            bb->Instruction_list.push_back(I);
+        }
+    }
+}
+
 void Mem2RegPass::Mem2Reg(CFG *C) {
+    // C->BuildDominatorTree();
+    Mem2RegInit(C);
     InsertPhi(C);
     VarRename(C);
 }
