@@ -1,6 +1,6 @@
 #include "mem2reg.h"
 #include <tuple>
-
+#include "dominator_tree.h"
 static std::set<Instruction> EraseSet;
 static std::map<int, int> mem2reg_map;
 std::map<int, std::set<int>> defs, uses;
@@ -45,7 +45,7 @@ void Mem2RegPass::IsPromotable(CFG *C, Instruction AllocaInst) {
     }
 
     // only def once 并且支配所有use
-    /*if (def_num[v] == 1) {  // 仅定义一次
+    if (def_num[v] == 1) {  // 仅定义一次
         int block_id = *(alloca_defs.begin());
         bool dom_flag = true;
         for (auto load_BBid : alloca_uses) {
@@ -59,12 +59,12 @@ void Mem2RegPass::IsPromotable(CFG *C, Instruction AllocaInst) {
             onedom_vset.insert(v);
             return;
         }
-    }*/
+    }
 
 
     // 一般情况，需要插入phi指令
-    /*common_allocas.insert(v);
-    EraseSet.insert(AllocaInst);*/
+    common_allocas.insert(v);
+    EraseSet.insert(AllocaInst);
 
     // TODO("IsPromotable"); 
 }
@@ -264,7 +264,7 @@ void Mem2RegPass::InsertPhi(CFG *C) {
     }
 
     // 对common_allocas插入phi指令
-    /*for (int v : common_allocas) {
+    for (int v : common_allocas) {
         std::set<int> F;
         std::set<int> W = defs[v];
         BasicInstruction::LLVMType type = alloca_type_map[v];
@@ -283,7 +283,7 @@ void Mem2RegPass::InsertPhi(CFG *C) {
                 }
             }
         }
-    }*/
+    }
 
     // TODO("InsertPhi"); 
 }
@@ -462,7 +462,7 @@ void Mem2RegInit(CFG *C) {
 }
 
 void Mem2RegPass::Mem2Reg(CFG *C) {
-    // C->BuildDominatorTree();
+    C->BuildDominatorTree();
     Mem2RegInit(C);
     InsertPhi(C);
     VarRename(C);
