@@ -49,7 +49,7 @@ void Mem2RegPass::IsPromotable(CFG *C, Instruction AllocaInst) {
         int block_id = *(alloca_defs.begin());
         bool dom_flag = true;
         for (auto load_BBid : alloca_uses) {
-            if (!C->IsDominate(block_id, load_BBid)) {
+            if (!domtrees->GetDomTree(C)->IsDominate(block_id, load_BBid)) {
                 dom_flag = false;
                 break;
             }
@@ -271,7 +271,7 @@ void Mem2RegPass::InsertPhi(CFG *C) {
         while (!W.empty()) {
             int BB_X = *W.begin();
             W.erase(BB_X);
-            for (auto BB_Y : C->DomTree.GetDF(BB_X)) {
+            for (auto BB_Y : domtrees->GetDomTree(C)->GetDF(BB_X)) {
                 if (F.find(BB_Y) == F.end()) {
                     PhiInstruction *PhiI = new PhiInstruction(type, GetNewRegOperand(++C->max_reg));
                     (*C->block_map)[BB_Y]->InsertInstruction(0, PhiI);
@@ -462,7 +462,6 @@ void Mem2RegInit(CFG *C) {
 }
 
 void Mem2RegPass::Mem2Reg(CFG *C) {
-    C->BuildDominatorTree();
     Mem2RegInit(C);
     InsertPhi(C);
     VarRename(C);
