@@ -9,157 +9,141 @@ void DomAnalysis::Execute() {
     }
 }
 
+void dfs_postorder(int cur, const std::vector<std::vector<LLVMBlock>> &G, std::vector<int> &result,
+                   std::vector<int> &vsd) {
+    vsd[cur] = 1;
+    for (auto next_block : G[cur]) {
+        if (vsd[next_block->block_id] == 0) {
+            dfs_postorder(next_block->block_id, G, result, vsd);
+        }
+    }
+    result.push_back(cur);
+}
+
+void DominatorTree::BuildPostDominatorTree() {
+    BuildDominatorTree(true);
+}
+
 void DominatorTree::BuildDominatorTree(bool reverse) { 
-    // 获取CFG中的所有基本块
-    if (!C || !C->block_map) {
-        return;
+    auto const *G = &(C->G);
+    auto const *invG = &(C->invG);
+    auto begin_id = 0;
+    if (reverse) {
+        auto temp = G;
+        G = invG;
+        invG = temp;
+        Assert(C->ret_block != nullptr);
+        begin_id = C->ret_block->block_id;
     }
 
-    // 首先找到最大 block_id 以确定向量的大小
-    int max_block_id = -1;
-    for (const auto& [id, block] : *(C->block_map)) {
-        if (id > max_block_id) {
-            max_block_id = id;
-        }
+    int block_num = C->max_label + 1;
+
+    std::vector<int> PostOrder_id;
+    std::vector<int> vsd;
+
+    dom_tree.clear();
+    dom_tree.resize(block_num);
+    idom.clear();
+    atdom.clear();
+
+    for (int i = 0; i <= C->max_label; i++) {
+        vsd.push_back(0);
     }
 
-    if (max_block_id == -1) {
-        return;
-    }
+    dfs_postorder(begin_id, (*G), PostOrder_id, vsd);
+    // dom(u) = {u} | {& dom(v)}
 
-    // 为了处理任意的 block_id，我们使用一个映射将 block_id 映射到向量的索引
-    std::map<int, int> block_id_to_index;
-    std::map<int, int> index_to_block_id;
-    int index = 0;
-    for (const auto& [id, block] : *(C->block_map)) {
-        block_id_to_index[id] = index;
-        index_to_block_id[index] = id;
-        index++;
+    atdom.resize(block_num);
+    for (int i = 0; i < block_num; i++) {
+        atdom[i].remake(block_num);
     }
-    int num_blocks = index; // 实际的基本块数量
-
-    // 初始化支配集
-    // dom[i] 表示基本块索引 i 的支配集（存储 block_id）
-    std::vector<std::set<int>> dom(num_blocks, std::set<int>());
-    for (int i = 0; i < num_blocks; ++i) {
-        for (int j = 0; j < num_blocks; ++j) {
-            dom[i].insert(index_to_block_id[j]);
-        }
-    }
-
-    // 假设入口块是 block_id 最小的基本块，通常为 0
-    // 如果入口块的 block_id 不是 0，可以根据实际情况调整
-    int entry_block_id = 0; // 您可以根据需要更改入口块的 ID
-    if (C->block_map->find(entry_block_id) == C->block_map->end()) {
-        // 如果 0 号块不存在，选择最小的 block_id 作为入口块
-        entry_block_id = std::min_element(
-            C->block_map->begin(),
-            C->block_map->end(),
-            [](const std::pair<int, LLVMBlock>& a, const std::pair<int, LLVMBlock>& b) {
-                return a.first < b.first;
+    // dom[u][v] = 1 <==> v dom u <==> v is in set dom(u)
+    // atdom[0][0] = 1;
+    atdom[begin_id].setbit(begin_id, 1);
+    for (int i = 0; i <= C->max_label; i++) {
+        for (int j = 0; j <= C->max_label; j++) {
+            if (i != begin_id) {
+                atdom[i].setbit(j, 1);
+                // atdom[i][j] = 1;
             }
-        )->first;
+        }
     }
-
-    // 获取入口块的索引
-    int entry_index = block_id_to_index[entry_block_id];
-
-    // 设置入口块的支配集仅包含自身
-    dom[entry_index].clear();
-    dom[entry_index].insert(entry_block_id);
-
-    bool changed = true;
+    bool changed = 1;
     while (changed) {
-        changed = false;
-        // 遍历所有基本块，除入口块外
-        for (int i = 0; i < num_blocks; ++i) {
-            if (i == entry_index) continue; // 跳过入口块
+        changed = 0;
+        for (std::vector<int>::reverse_iterator it = PostOrder_id.rbegin(); it != PostOrder_id.rend(); ++it) {
+            auto u = *it;
+            DynamicBitset new_dom_u(block_num);
 
-            int current_block_id = index_to_block_id[i];
-            std::vector<LLVMBlock> predecessors = C->GetPredecessor(current_block_id);
-
-            if (predecessors.empty()) continue; // 无前驱块，可能是孤立块
-
-            // 计算前驱块的支配集的交集
-            std::set<int> new_dom;
-            bool first_pred = true;
-            for (const auto& pred_block : predecessors) {
-                if (!pred_block) {
-                    continue;
-                }
-                int pred_block_id = pred_block->block_id;
-                if (block_id_to_index.find(pred_block_id) == block_id_to_index.end()) {
-                    continue;
-                }
-                int pred_index = block_id_to_index[pred_block_id];
-                if (first_pred) {
-                    new_dom = dom[pred_index];
-                    first_pred = false;
-                } else {
-                    std::set<int> temp;
-                    std::set_intersection(new_dom.begin(), new_dom.end(),
-                                          dom[pred_index].begin(), dom[pred_index].end(),
-                                          std::inserter(temp, temp.begin()));
-                    new_dom = temp;
+            // Goal: calculate
+            // dom(u) |= {u} | {& dom(v)}
+            // First:
+            // dom(u) = {& dom(v)}, v is qianqu
+            if (!(*invG)[u].empty()) {
+                new_dom_u = atdom[(*((*invG)[u].begin()))->block_id];
+                for (auto v : (*invG)[u]) {
+                    // new_dom_u &= atdom[v->block_id];
+                    new_dom_u = new_dom_u & atdom[v->block_id];
                 }
             }
-
-            // 加上自身
-            new_dom.insert(current_block_id);
-
-            // 检查支配集是否变化
-            if (new_dom != dom[i]) {
-                dom[i] = new_dom;
-                changed = true;
+            // Second:
+            // dom(u) |= {u}
+            new_dom_u.setbit(u, 1);
+            if (new_dom_u != atdom[u]) {
+                atdom[u] = new_dom_u;
+                changed = 1;
             }
         }
     }
-
-    // 计算立即支配者
-    // idom[i] 表示基本块索引 i 的立即支配者的 block_id
-    idom.resize(num_blocks, nullptr);
-    for (int i = 0; i < num_blocks; ++i) {
-        if (i == entry_index) {
-            idom[i] = nullptr; // 入口块没有立即支配者
+    idom.clear();
+    idom.resize(block_num);
+    // Goal calculate all immediate dom(idom)
+    for (auto [u, bb] : *C->block_map) {
+        if (u == begin_id) {
             continue;
         }
+        for (int v = 0; v <= C->max_label; v++) {
+            // if v idom u, v must dom u
+            // if (atdom[u][v]) {
+            if (atdom[u].getbit(v)) {
+                // dom(u) = {u,???,v,{domv path}}
+                // dom(v) = {v,{domv path}}
+                // ??? = NULL set if v idom u
 
-        int current_block_id = index_to_block_id[i];
-        std::set<int> dominators = dom[i];
-        dominators.erase(current_block_id); // 移除自身
-
-        // 寻找支配集中的最近支配者
-        LLVMBlock immediate_dominator = nullptr;
-        for (int dom_id : dominators) {
-            bool is_immediate = true;
-            for (int other_dom_id : dominators) {
-                if (dom_id == other_dom_id) continue;
-                if (dom[block_id_to_index[dom_id]].find(other_dom_id) != dom[block_id_to_index[dom_id]].end()) {
-                    // 如果 other_dom_id 也支配 dom_id，则 dom_id 不是立即支配者
-                    is_immediate = false;
-                    break;
+                // equals dom(u)-dom(v)
+                auto tmp = (atdom[u] & atdom[v]) ^ atdom[u];
+                if (tmp.count() == 1 && tmp.getbit(u)) {
+                    idom[u] = (*C->block_map)[v];
+                    dom_tree[v].push_back((*C->block_map)[u]);
                 }
             }
-            if (is_immediate) {
-                immediate_dominator = (*(C->block_map))[dom_id];
-                break;
-            }
         }
-        idom[i] = immediate_dominator;
+    }
+    // Dom Frontier DF
+    // DF[x][y]: x dom prev(y), but (x==y or x not dom y)
+    df.clear();
+    df.resize(block_num);
+    for (int i = 0; i < block_num; i++) {
+        df[i].remake(block_num);
     }
 
-    // 构建支配树的邻接表
-    dom_tree.clear();
-    dom_tree.resize(num_blocks, std::vector<LLVMBlock>());
-    for (int i = 0; i < num_blocks; ++i) {
-        if (idom[i] != nullptr) {
-            int idom_block_id = idom[i]->block_id;
-            if (block_id_to_index.find(idom_block_id) != block_id_to_index.end()) {
-                int idom_index = block_id_to_index[idom_block_id];
-                int current_block_id = index_to_block_id[i];
-                if (block_id_to_index.find(current_block_id) != block_id_to_index.end()) {
-                    int current_index = block_id_to_index[current_block_id];
-                    dom_tree[idom_index].push_back((*(C->block_map))[current_block_id]);
+    for (int i = 0; i < (*G).size(); i++) {
+        for (auto edg_end : (*G)[i]) {
+            // foreach every edge a->b
+            int a = i;
+            int b = edg_end->block_id;
+            // a dom prev(b)=a
+            int x = a;
+            // a==b or a not dom b
+            while (x == b || IsDominate(x, b) == 0) {
+                // df[x][b] = 1;
+                df[x].setbit(b, 1);
+                if (idom[x] != NULL) {
+                    // idom(a) must dom prev(b)=a
+                    x = idom[x]->block_id;
+                } else {
+                    // std::cerr<<"Meet null idom node "<<x<<std::endl;
+                    break;
                 }
             }
         }
@@ -168,38 +152,36 @@ void DominatorTree::BuildDominatorTree(bool reverse) {
 }
 
 std::set<int> DominatorTree::GetDF(std::set<int> S) {
-    std::set<int> df;
-    for (int id : S) {
-        if (id >= 0 && id < idom.size()) {
-            LLVMBlock idominator = idom[id];
-            if (idominator != nullptr) {
-                df.insert(idominator->block_id);
-            }
+    DynamicBitset result(C->max_label + 1);
+    for (auto node : S) {
+        // result |= df[node];
+        result = result | df[node];
+    }
+    std::set<int> ret;
+    for (int i = 0; i <= C->max_label; ++i) {
+        // if (result[i]) {
+        if (result.getbit(i)) {
+            ret.insert(i);
         }
     }
-    return df;
+    return ret;
     //TODO("GetDF"); 
 }
 
 std::set<int> DominatorTree::GetDF(int id) {
-    std::set<int> s;
-    s.insert(id);
-    return GetDF(s);
+    std::set<int> ret;
+    for (int i = 0; i <= C->max_label; ++i) {
+        // if (df[id][i]) {
+        if (df[id].getbit(i)) {
+            ret.insert(i);
+        }
+    }
+    return ret;
     //TODO("GetDF"); 
 }
 
 bool DominatorTree::IsDominate(int id1, int id2) {
-    if (id1 == id2) {
-        return true;
-    }
-    int current = id2;
-    while (idom[current] != nullptr) {
-        if (idom[current]->block_id == id1) {
-            return true;
-        }
-        current = idom[current]->block_id;
-    }
-    return false;
+    return atdom[id2].getbit(id1);
     //TODO("IsDominate"); 
 }
 

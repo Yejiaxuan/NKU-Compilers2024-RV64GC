@@ -2,11 +2,19 @@
 #include "../../include/ir.h"
 #include <assert.h>
 
+extern std::map<FuncDefInstruction, int> max_label_map;
+extern std::map<FuncDefInstruction, int> max_reg_map;
+
+std::map<std::string, CFG *> CFGMap;
+
 void LLVMIR::CFGInit() {
     for (auto &[defI, bb_map] : function_block_map) {
         CFG *cfg = new CFG();
         cfg->block_map = &bb_map;
         cfg->function_def = defI;
+        cfg->max_reg = max_reg_map[defI];
+        cfg->max_label = max_label_map[defI];
+        CFGMap[defI->GetFunctionName()] = cfg;
         cfg->BuildCFG();
         //TODO("init your members in class CFG if you need");
         llvm_cfg[defI] = cfg;
@@ -23,6 +31,7 @@ void CFG::BuildCFG() {
     // 清空现有的邻接表
     G.clear();
     invG.clear();
+    
 
     // 步骤 1：确定最大的基本块 ID 以调整 G 和 invG 的大小
     int max_block_id = 0;
