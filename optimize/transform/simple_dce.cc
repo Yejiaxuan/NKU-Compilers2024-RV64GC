@@ -199,6 +199,20 @@ bool UsesRegister(BasicInstruction* instr, int reg_no) {
 
 // 死代码消除函数
 void SimpleDCEPass::EliminateDeadCode(CFG *C) {
+    //************** 修改开始：预先构建def-use链 **************
+    // 使用一个map将reg_no映射到使用该寄存器的指令列表
+    std::unordered_map<int, std::vector<BasicInstruction*>> def_use_chain;
+    for(auto &[block_id, block] : *(C->block_map)) {
+        for(auto &instr : block->Instruction_list) {
+            for (int reg_no = 0; reg_no < MAX_REGS; ++reg_no) {
+                if(UsesRegister(instr, reg_no)) {
+                    def_use_chain[reg_no].push_back(instr);
+                }
+            }
+        }
+    }
+    //************** 修改结束 **************
+
     // 使用一个集合来存储有用的寄存器
     std::unordered_set<int> useful_regs;
     // 使用一个队列来处理有用的寄存器
@@ -288,114 +302,112 @@ void SimpleDCEPass::EliminateDeadCode(CFG *C) {
         int reg = worklist.front();
         worklist.pop();
 
-        for(auto &[block_id, block] : *(C->block_map)) {
-            for(auto &instr : block->Instruction_list) {
-                // 如果该指令使用了当前寄存器
-                if(UsesRegister(instr, reg)) {
-                    // 获取该指令的结果寄存器
-                    int instr_res_reg = GetResultRegNo(instr);
-                    if(instr_res_reg != -1 && useful_regs.find(instr_res_reg) == useful_regs.end()) {
-                        useful_regs.insert(instr_res_reg);
-                        worklist.push(instr_res_reg);
-                    }
+        // 使用预先构建的def-use链来快速找到使用该reg的指令
+        if(def_use_chain.find(reg) != def_use_chain.end()) {
+            for(auto *instr : def_use_chain[reg]) {
+                // 获取该指令的结果寄存器
+                int instr_res_reg = GetResultRegNo(instr);
+                if(instr_res_reg != -1 && useful_regs.find(instr_res_reg) == useful_regs.end()) {
+                    useful_regs.insert(instr_res_reg);
+                    worklist.push(instr_res_reg);
+                }
 
-                    // 根据指令类型，标记其操作数为有用
-                    switch(instr->GetOpcode()) {
-                        case BasicInstruction::ADD:
-                        case BasicInstruction::SUB:
-                        case BasicInstruction::MUL:
-                        case BasicInstruction::DIV:
-                        case BasicInstruction::BITXOR:
-                        case BasicInstruction::MOD:
-                        case BasicInstruction::FADD:
-                        case BasicInstruction::FSUB:
-                        case BasicInstruction::FMUL:
-                        case BasicInstruction::FDIV: {
-                            ArithmeticInstruction* arithInstr = dynamic_cast<ArithmeticInstruction*>(instr);
-                            if(arithInstr) {
-                                Operand op1 = arithInstr->GetOperand1();
-                                Operand op2 = arithInstr->GetOperand2();
-                                if(op1->GetOperandType() == BasicOperand::REG) {
-                                    RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
-                                    if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
-                                        useful_regs.insert(op1Reg->GetRegNo());
-                                        worklist.push(op1Reg->GetRegNo());
-                                    }
-                                }
-                                if(op2->GetOperandType() == BasicOperand::REG) {
-                                    RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
-                                    if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
-                                        useful_regs.insert(op2Reg->GetRegNo());
-                                        worklist.push(op2Reg->GetRegNo());
-                                    }
+                // 根据指令类型，标记其操作数为有用
+                switch(instr->GetOpcode()) {
+                    case BasicInstruction::ADD:
+                    case BasicInstruction::SUB:
+                    case BasicInstruction::MUL:
+                    case BasicInstruction::DIV:
+                    case BasicInstruction::BITXOR:
+                    case BasicInstruction::MOD:
+                    case BasicInstruction::FADD:
+                    case BasicInstruction::FSUB:
+                    case BasicInstruction::FMUL:
+                    case BasicInstruction::FDIV: {
+                        ArithmeticInstruction* arithInstr = dynamic_cast<ArithmeticInstruction*>(instr);
+                        if(arithInstr) {
+                            Operand op1 = arithInstr->GetOperand1();
+                            Operand op2 = arithInstr->GetOperand2();
+                            if(op1->GetOperandType() == BasicOperand::REG) {
+                                RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
+                                if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
+                                    useful_regs.insert(op1Reg->GetRegNo());
+                                    worklist.push(op1Reg->GetRegNo());
                                 }
                             }
-                            break;
-                        }
-                        case BasicInstruction::ICMP: {
-                            IcmpInstruction* icmpInstr = dynamic_cast<IcmpInstruction*>(instr);
-                            if(icmpInstr) {
-                                Operand op1 = icmpInstr->GetOp1();
-                                Operand op2 = icmpInstr->GetOp2();
-                                if(op1->GetOperandType() == BasicOperand::REG) {
-                                    RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
-                                    if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
-                                        useful_regs.insert(op1Reg->GetRegNo());
-                                        worklist.push(op1Reg->GetRegNo());
-                                    }
-                                }
-                                if(op2->GetOperandType() == BasicOperand::REG) {
-                                    RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
-                                    if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
-                                        useful_regs.insert(op2Reg->GetRegNo());
-                                        worklist.push(op2Reg->GetRegNo());
-                                    }
+                            if(op2->GetOperandType() == BasicOperand::REG) {
+                                RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
+                                if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
+                                    useful_regs.insert(op2Reg->GetRegNo());
+                                    worklist.push(op2Reg->GetRegNo());
                                 }
                             }
-                            break;
                         }
-                        case BasicInstruction::FCMP: {
-                            FcmpInstruction* fcmpInstr = dynamic_cast<FcmpInstruction*>(instr);
-                            if(fcmpInstr) {
-                                Operand op1 = fcmpInstr->GetOp1();
-                                Operand op2 = fcmpInstr->GetOp2();
-                                if(op1->GetOperandType() == BasicOperand::REG) {
-                                    RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
-                                    if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
-                                        useful_regs.insert(op1Reg->GetRegNo());
-                                        worklist.push(op1Reg->GetRegNo());
-                                    }
-                                }
-                                if(op2->GetOperandType() == BasicOperand::REG) {
-                                    RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
-                                    if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
-                                        useful_regs.insert(op2Reg->GetRegNo());
-                                        worklist.push(op2Reg->GetRegNo());
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                        case BasicInstruction::PHI: {
-                            PhiInstruction* phiInstr = dynamic_cast<PhiInstruction*>(instr);
-                            if(phiInstr) {
-                                for(auto &val_label : phiInstr->GetPhiList()) {
-                                    Operand val = val_label.first;
-                                    if(val->GetOperandType() == BasicOperand::REG) {
-                                        RegOperand* valReg = dynamic_cast<RegOperand*>(val);
-                                        if(valReg && useful_regs.find(valReg->GetRegNo()) == useful_regs.end()) {
-                                            useful_regs.insert(valReg->GetRegNo());
-                                            worklist.push(valReg->GetRegNo());
-                                        }
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                        // 处理更多指令类型
-                        default:
-                            break;
+                        break;
                     }
+                    case BasicInstruction::ICMP: {
+                        IcmpInstruction* icmpInstr = dynamic_cast<IcmpInstruction*>(instr);
+                        if(icmpInstr) {
+                            Operand op1 = icmpInstr->GetOp1();
+                            Operand op2 = icmpInstr->GetOp2();
+                            if(op1->GetOperandType() == BasicOperand::REG) {
+                                RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
+                                if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
+                                    useful_regs.insert(op1Reg->GetRegNo());
+                                    worklist.push(op1Reg->GetRegNo());
+                                }
+                            }
+                            if(op2->GetOperandType() == BasicOperand::REG) {
+                                RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
+                                if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
+                                    useful_regs.insert(op2Reg->GetRegNo());
+                                    worklist.push(op2Reg->GetRegNo());
+                                }
+                            }
+                        }
+                        break;
+                    }
+                    case BasicInstruction::FCMP: {
+                        FcmpInstruction* fcmpInstr = dynamic_cast<FcmpInstruction*>(instr);
+                        if(fcmpInstr) {
+                            Operand op1 = fcmpInstr->GetOp1();
+                            Operand op2 = fcmpInstr->GetOp2();
+                            if(op1->GetOperandType() == BasicOperand::REG) {
+                                RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
+                                if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
+                                    useful_regs.insert(op1Reg->GetRegNo());
+                                    worklist.push(op1Reg->GetRegNo());
+                                }
+                            }
+                            if(op2->GetOperandType() == BasicOperand::REG) {
+                                RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
+                                if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
+                                    useful_regs.insert(op2Reg->GetRegNo());
+                                    worklist.push(op2Reg->GetRegNo());
+                                }
+                            }
+                        }
+                        break;
+                    }
+                    case BasicInstruction::PHI: {
+                        PhiInstruction* phiInstr = dynamic_cast<PhiInstruction*>(instr);
+                        if(phiInstr) {
+                            for(auto &val_label : phiInstr->GetPhiList()) {
+                                Operand val = val_label.first;
+                                if(val->GetOperandType() == BasicOperand::REG) {
+                                    RegOperand* valReg = dynamic_cast<RegOperand*>(val);
+                                    if(valReg && useful_regs.find(valReg->GetRegNo()) == useful_regs.end()) {
+                                        useful_regs.insert(valReg->GetRegNo());
+                                        worklist.push(valReg->GetRegNo());
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    }
+                    // 处理更多指令类型
+                    default:
+                        break;
                 }
             }
         }
