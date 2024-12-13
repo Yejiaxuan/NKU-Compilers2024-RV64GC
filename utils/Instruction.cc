@@ -181,6 +181,139 @@ void IRgenAllocaArray(LLVMBlock B, BasicInstruction::LLVMType type, int reg, std
     B->InsertInstruction(0, new AllocaInstruction(type, dims, GetNewRegOperand(reg)));
 }
 
+Operand RegOperand::CopyOperand() { return GetNewRegOperand(reg_no); }
+
+Operand ImmI32Operand::CopyOperand() { return new ImmI32Operand(immVal); }
+
+Operand ImmF32Operand::CopyOperand() { return new ImmF32Operand(immVal); }
+
+Operand ImmI64Operand::CopyOperand() { return new ImmI64Operand(immVal); }
+
+Operand LabelOperand::CopyOperand() { return GetNewLabelOperand(label_no); }
+
+Operand GlobalOperand::CopyOperand() { return GetNewGlobalOperand(name); }
+
+Instruction LoadInstruction::CopyInstruction() {
+    Operand npointer = pointer->CopyOperand();
+    Operand nresult = result->CopyOperand();
+    return new LoadInstruction(type, npointer, nresult);
+}
+
+Instruction StoreInstruction::CopyInstruction() {
+    Operand npointer = pointer->CopyOperand();
+    Operand nvalue = value->CopyOperand();
+    return new StoreInstruction(type, npointer, nvalue);
+}
+
+Instruction ArithmeticInstruction::CopyInstruction() {
+
+    Operand nop1 = op1->CopyOperand();
+    Operand nop2 = op2->CopyOperand();
+    Operand nresult = result->CopyOperand();
+    if (op3 == nullptr) {
+        return new ArithmeticInstruction(opcode, type, nop1, nop2, nresult);
+    }
+    Operand nop3 = op3->CopyOperand();
+    return new ArithmeticInstruction(opcode, type, nop1, nop2, nop3, nresult);
+}
+
+Instruction IcmpInstruction::CopyInstruction() {
+    Operand nop1 = op1->CopyOperand();
+    Operand nop2 = op2->CopyOperand();
+    Operand nresult = result->CopyOperand();
+    return new IcmpInstruction(type, nop1, nop2, cond, nresult);
+}
+
+Instruction FcmpInstruction::CopyInstruction() {
+    Operand nop1 = op1->CopyOperand();
+    Operand nop2 = op2->CopyOperand();
+    Operand nresult = result->CopyOperand();
+    return new FcmpInstruction(type, nop1, nop2, cond, nresult);
+}
+
+Instruction PhiInstruction::CopyInstruction() {
+    Operand nresult = result->CopyOperand();
+    std::vector<std::pair<Operand, Operand>> nval_labels;
+    // std::map<operand,operand> nval_labels;
+
+    for (auto Phiop : phi_list) {
+        Operand nlabel = Phiop.first->CopyOperand();
+        Operand nvalue = Phiop.second->CopyOperand();
+        // nval_labels.push_back({nlabel,nvalue});
+        nval_labels.push_back(std::make_pair(nlabel, nvalue));
+    }
+
+    return new PhiInstruction(type, nresult, nval_labels);
+}
+
+Instruction AllocaInstruction::CopyInstruction() {
+    Operand nresult = result->CopyOperand();
+    std::vector<int> ndims;
+    for (auto dimint : dims) {
+        ndims.push_back(dimint);
+    }
+    return new AllocaInstruction(type, ndims, nresult);
+}
+
+Instruction BrCondInstruction::CopyInstruction() {
+    Operand ncond = cond->CopyOperand();
+    Operand ntrueLabel = trueLabel->CopyOperand();
+    Operand nfalseLabel = falseLabel->CopyOperand();
+    return new BrCondInstruction(ncond, ntrueLabel, nfalseLabel);
+}
+
+Instruction BrUncondInstruction::CopyInstruction() {
+    Operand ndestLabel = destLabel->CopyOperand();
+    return new BrUncondInstruction(ndestLabel);
+}
+
+Instruction CallInstruction::CopyInstruction() {
+    Operand nresult = NULL;
+    if (ret_type != VOID) {
+        nresult = result->CopyOperand();
+    }
+    std::vector<std::pair<enum LLVMType, Operand>> nargs;
+    for (auto n : args) {
+        nargs.push_back({n.first, n.second->CopyOperand()});
+    }
+    return new CallInstruction(ret_type, nresult, name, nargs);
+}
+
+Instruction RetInstruction::CopyInstruction() { return new RetInstruction(ret_type, ret_val); }
+
+Instruction GetElementptrInstruction::CopyInstruction() {
+    Operand nresult = result->CopyOperand();
+    Operand nptrval = ptrval->CopyOperand();
+    std::vector<Operand> nindexes;
+    for (auto index : indexes) {
+        Operand nindex = index->CopyOperand();
+        nindexes.push_back(nindex);
+    }
+
+    return new GetElementptrInstruction(type, nresult, nptrval, dims, nindexes, I32);
+}
+
+Instruction FptosiInstruction::CopyInstruction() {
+    Operand nresult = result->CopyOperand();
+    Operand nvalue = value->CopyOperand();
+
+    return new FptosiInstruction(nresult, nvalue);
+}
+
+Instruction SitofpInstruction::CopyInstruction() {
+    Operand nresult = result->CopyOperand();
+    Operand nvalue = value->CopyOperand();
+
+    return new SitofpInstruction(nresult, nvalue);
+}
+
+Instruction ZextInstruction::CopyInstruction() {
+    Operand nresult = result->CopyOperand();
+    Operand nvalue = value->CopyOperand();
+
+    return new ZextInstruction(to_type, nresult, from_type, nvalue);
+}
+
 void LoadInstruction::ReplaceRegByMap(const std::map<int, int> &Rule) {
     if (pointer->GetOperandType() == BasicOperand::REG) {
         auto pointer_reg = (RegOperand *)pointer;

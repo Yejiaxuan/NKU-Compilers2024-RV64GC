@@ -113,6 +113,7 @@ public:
     BasicOperand() {}
     operand_type GetOperandType() { return operandType; }
     virtual std::string GetFullName() = 0;
+    virtual Operand CopyOperand() = 0;
 };
 
 // @register operand;%r+register No
@@ -128,6 +129,7 @@ public:
 
     friend RegOperand *GetNewRegOperand(int RegNo);
     virtual std::string GetFullName();
+    virtual Operand CopyOperand();
 };
 RegOperand *GetNewRegOperand(int RegNo);
 
@@ -143,6 +145,7 @@ public:
         this->immVal = immVal;
     }
     virtual std::string GetFullName();
+    virtual Operand CopyOperand();
 };
 
 // @integer64 immediate
@@ -157,6 +160,7 @@ public:
         this->immVal = immVal;
     }
     virtual std::string GetFullName();
+    virtual Operand CopyOperand();
 };
 
 // @float32 immediate
@@ -173,6 +177,7 @@ public:
         this->immVal = immVal;
     }
     virtual std::string GetFullName();
+    virtual Operand CopyOperand();
 };
 
 // @label %L+label No
@@ -188,6 +193,7 @@ public:
 
     friend LabelOperand *GetNewLabelOperand(int LabelNo);
     virtual std::string GetFullName();
+    virtual Operand CopyOperand();
 };
 
 LabelOperand *GetNewLabelOperand(int RegNo);
@@ -205,6 +211,7 @@ public:
 
     friend GlobalOperand *GetNewGlobalOperand(std::string name);
     virtual std::string GetFullName();
+    virtual Operand CopyOperand();
 };
 
 GlobalOperand *GetNewGlobalOperand(std::string name);
@@ -294,6 +301,7 @@ public:
 
     virtual void PrintIR(std::ostream &s) = 0;
     virtual void ReplaceRegByMap(const std::map<int, int> &Rule) = 0;
+    virtual Instruction CopyInstruction() = 0;
 };
 
 // load
@@ -317,6 +325,8 @@ public:
     }
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
+    
 };
 
 // store
@@ -342,6 +352,7 @@ public:
 
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 //<result>=add <ty> <op1>,<op2>
@@ -387,6 +398,7 @@ public:
 
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 //<result>=icmp <cond> <ty> <op1>,<op2>
@@ -417,6 +429,7 @@ public:
     }
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 //<result>=fcmp <cond> <ty> <op1>,<op2>
@@ -444,6 +457,7 @@ public:
     }
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 // phi syntax:
@@ -471,6 +485,7 @@ public:
     void InsertPhi(Operand val, Operand label) { phi_list.emplace_back(label, val); }
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 // alloca
@@ -499,6 +514,7 @@ public:
 
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 // Conditional branch
@@ -522,6 +538,7 @@ public:
 
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 // Unconditional branch
@@ -538,6 +555,7 @@ public:
     }
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 /*
@@ -567,6 +585,7 @@ public:
     }
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction() { return nullptr; }
 };
 
 class GlobalStringConstInstruction : public BasicInstruction {
@@ -579,6 +598,7 @@ public:
 
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction() { return nullptr; }
 };
 
 /*
@@ -628,6 +648,7 @@ public:
     void push_back_Parameter(enum LLVMType type, Operand val) { args.push_back(std::make_pair(type, val)); }
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 /*
@@ -656,6 +677,7 @@ public:
 
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 /*
@@ -702,6 +724,7 @@ public:
 
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 class FunctionDefineInstruction : public BasicInstruction {
@@ -725,6 +748,7 @@ public:
 
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction() { return nullptr; }
 };
 typedef FunctionDefineInstruction *FuncDefInstruction;
 
@@ -745,6 +769,7 @@ public:
 
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction() { return nullptr; }
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -762,6 +787,7 @@ public:
     Operand GetSrc() { return value; }
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -780,6 +806,7 @@ public:
     Operand GetSrc() { return value; }
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 // 无符号扩展，你大概率需要它来将i1无符号扩展至i32(即对应c语言bool类型转int)
@@ -799,6 +826,7 @@ public:
     }
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
+    virtual Instruction CopyInstruction();
 };
 
 std::ostream &operator<<(std::ostream &s, BasicInstruction::LLVMType type);
