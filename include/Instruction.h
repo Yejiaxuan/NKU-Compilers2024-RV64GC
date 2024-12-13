@@ -455,6 +455,7 @@ private:
     std::vector<std::pair<Operand, Operand>> phi_list;
 
 public:
+    const std::vector<std::pair<Operand, Operand>>& GetPhiList() const { return phi_list; }
     Operand GetResultReg() { return result; }
     PhiInstruction(enum LLVMType type, Operand result, decltype(phi_list) val_labels) {
         this->opcode = LLVMIROpcode::PHI;
@@ -467,7 +468,7 @@ public:
         this->type = type;
         this->result = result;
     }
-    void InsertPhi(Operand val, Operand label) { phi_list.push_back(std::make_pair(label, val)); }
+    void InsertPhi(Operand val, Operand label) { phi_list.emplace_back(label, val); }
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
 };
@@ -598,6 +599,7 @@ private:
     std::vector<std::pair<enum LLVMType, Operand>> args;
 
 public:
+    Operand GetResult() { return result; }
     // Construction Function:Set All datas
     CallInstruction(enum LLVMType retType, Operand res, std::string FuncName,
                     std::vector<std::pair<enum LLVMType, Operand>> arguments)
