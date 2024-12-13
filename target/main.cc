@@ -4,6 +4,7 @@
 
 #include "../optimize/transform/mem2reg.h"
 #include "../optimize/transform/simplify_cfg.h"
+#include "../optimize/transform/simple_dce.h"
 
 #include "../optimize/analysis/dominator_tree.h"
 
@@ -168,6 +169,8 @@ int main(int argc, char **argv) {
         
         dom.Execute();   // 完成支配树建立后，取消该行代码的注释
         (Mem2RegPass(&llvmIR, &dom)).Execute();
+        
+        SimpleDCEPass(&llvmIR).Execute();
 
         // TODO: add more passes
     }
