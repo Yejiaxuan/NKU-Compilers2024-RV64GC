@@ -3,9 +3,7 @@
 #include <unordered_map>
 #include <bitset>
 #include <deque>
-
-// 假设最大寄存器数量为1024，根据实际情况调整
-constexpr int MAX_REGS = 1024;
+#include <unordered_set>
 
 void SimpleDCEPass::Execute() {
     for (auto &[defI, cfg] : llvmIR->llvm_cfg) {
@@ -19,6 +17,12 @@ bool HasSideEffect(BasicInstruction* instr) {
         case BasicInstruction::STORE:
         case BasicInstruction::CALL:
         case BasicInstruction::RET:
+        case BasicInstruction::BR_COND:
+        case BasicInstruction::BR_UNCOND:
+        case BasicInstruction::ALLOCA:
+        case BasicInstruction::GETELEMENTPTR:
+        case BasicInstruction::GLOBAL_VAR:    // 添加全局变量定义
+        case BasicInstruction::GLOBAL_STR:    // 添加全局字符串定义
             return true;
         default:
             return false;
@@ -30,7 +34,7 @@ int GetResultRegNo(BasicInstruction* instr) {
     Operand result = nullptr;
     switch (instr->GetOpcode()) {
         case BasicInstruction::LOAD: {
-            LoadInstruction* loadInstr = dynamic_cast<LoadInstruction*>(instr);
+            LoadInstruction* loadInstr = static_cast<LoadInstruction*>(instr);
             result = loadInstr->GetResult();
             break;
         }
@@ -69,6 +73,18 @@ int GetResultRegNo(BasicInstruction* instr) {
             else if (auto callInstr = dynamic_cast<CallInstruction*>(instr)) {
                 result = callInstr->GetResult();
             }
+            else if (auto loadInstr = dynamic_cast<LoadInstruction*>(instr)) {
+                result = loadInstr->GetResult();
+            }
+            else if (auto fptosiInstr = dynamic_cast<FptosiInstruction*>(instr)) {
+                result = fptosiInstr->GetResult();
+            }
+            else if (auto sitofpInstr = dynamic_cast<SitofpInstruction*>(instr)) {
+                result = sitofpInstr->GetResult();
+            }
+            else if (auto zextInstr = dynamic_cast<ZextInstruction*>(instr)) {
+                result = zextInstr->GetResult();
+            }
             // 其他指令类型同理
             break;
         default:
@@ -76,34 +92,41 @@ int GetResultRegNo(BasicInstruction* instr) {
     }
 
     if (result && result->GetOperandType() == BasicOperand::REG) {
-        RegOperand* reg = dynamic_cast<RegOperand*>(result);
+        RegOperand* reg = static_cast<RegOperand*>(result);
         if (reg) {
-            return reg->GetRegNo();
+            int reg_no = reg->GetRegNo();
+            Log("Defining reg_no %d in instruction opcode %d", reg_no, instr->GetOpcode());
+            return reg_no;
         }
+    } else {
+        Log("No REG result for instruction opcode %d", instr->GetOpcode());
     }
     return -1;
 }
 
-bool UsesRegister(BasicInstruction* instr, int reg_no) {
-    switch (instr->GetOpcode()) {
+std::vector<int> GetUsedRegisters(BasicInstruction* instr) {
+    std::vector<int> regs;
+    switch(instr->GetOpcode()) {
         case BasicInstruction::LOAD: {
-            LoadInstruction* loadInstr = dynamic_cast<LoadInstruction*>(instr);
-            if (loadInstr->GetPointer()->GetOperandType() == BasicOperand::REG) {
-                RegOperand* ptrReg = dynamic_cast<RegOperand*>(loadInstr->GetPointer());
-                if (ptrReg && ptrReg->GetRegNo() == reg_no) return true;
+            LoadInstruction* loadInstr = static_cast<LoadInstruction*>(instr);
+            Operand ptr = loadInstr->GetPointer();
+            if(ptr->GetOperandType() == BasicOperand::REG) {
+                RegOperand* ptrReg = static_cast<RegOperand*>(ptr);
+                regs.push_back(ptrReg->GetRegNo());
             }
             break;
         }
         case BasicInstruction::STORE: {
-            StoreInstruction* storeInstr = dynamic_cast<StoreInstruction*>(instr);
-            // 检查value和pointer
-            if (storeInstr->GetValue()->GetOperandType() == BasicOperand::REG) {
-                RegOperand* valReg = dynamic_cast<RegOperand*>(storeInstr->GetValue());
-                if (valReg && valReg->GetRegNo() == reg_no) return true;
+            StoreInstruction* storeInstr = static_cast<StoreInstruction*>(instr);
+            Operand val = storeInstr->GetValue();
+            Operand ptr = storeInstr->GetPointer();
+            if(val->GetOperandType() == BasicOperand::REG) {
+                RegOperand* valReg = static_cast<RegOperand*>(val);
+                regs.push_back(valReg->GetRegNo());
             }
-            if (storeInstr->GetPointer()->GetOperandType() == BasicOperand::REG) {
-                RegOperand* ptrReg = dynamic_cast<RegOperand*>(storeInstr->GetPointer());
-                if (ptrReg && ptrReg->GetRegNo() == reg_no) return true;
+            if(ptr->GetOperandType() == BasicOperand::REG) {
+                RegOperand* ptrReg = static_cast<RegOperand*>(ptr);
+                regs.push_back(ptrReg->GetRegNo());
             }
             break;
         }
@@ -117,76 +140,140 @@ bool UsesRegister(BasicInstruction* instr, int reg_no) {
         case BasicInstruction::FSUB:
         case BasicInstruction::FMUL:
         case BasicInstruction::FDIV: {
-            ArithmeticInstruction* arithInstr = dynamic_cast<ArithmeticInstruction*>(instr);
-            if(arithInstr) {
-                Operand op1 = arithInstr->GetOperand1();
-                Operand op2 = arithInstr->GetOperand2();
-                if((op1->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(op1)->GetRegNo() == reg_no) ||
-                   (op2->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(op2)->GetRegNo() == reg_no)) {
-                    return true;
-                }
+            ArithmeticInstruction* arithInstr = static_cast<ArithmeticInstruction*>(instr);
+            if(arithInstr->GetOperand1()->GetOperandType() == BasicOperand::REG) {
+                RegOperand* op1Reg = static_cast<RegOperand*>(arithInstr->GetOperand1());
+                regs.push_back(op1Reg->GetRegNo());
+            }
+            if(arithInstr->GetOperand2()->GetOperandType() == BasicOperand::REG) {
+                RegOperand* op2Reg = static_cast<RegOperand*>(arithInstr->GetOperand2());
+                regs.push_back(op2Reg->GetRegNo());
+            }
+            if(arithInstr->GetOperand3() && arithInstr->GetOperand3()->GetOperandType() == BasicOperand::REG) {
+                RegOperand* op3Reg = static_cast<RegOperand*>(arithInstr->GetOperand3());
+                regs.push_back(op3Reg->GetRegNo());
             }
             break;
         }
         case BasicInstruction::ICMP: {
-            IcmpInstruction* icmpInstr = dynamic_cast<IcmpInstruction*>(instr);
-            if(icmpInstr) {
-                Operand op1 = icmpInstr->GetOp1();
-                Operand op2 = icmpInstr->GetOp2();
-                if((op1->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(op1)->GetRegNo() == reg_no) ||
-                   (op2->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(op2)->GetRegNo() == reg_no)) {
-                    return true;
-                }
+            IcmpInstruction* icmpInstr = static_cast<IcmpInstruction*>(instr);
+            if(icmpInstr->GetOp1()->GetOperandType() == BasicOperand::REG) {
+                RegOperand* op1Reg = static_cast<RegOperand*>(icmpInstr->GetOp1());
+                regs.push_back(op1Reg->GetRegNo());
+            }
+            if(icmpInstr->GetOp2()->GetOperandType() == BasicOperand::REG) {
+                RegOperand* op2Reg = static_cast<RegOperand*>(icmpInstr->GetOp2());
+                regs.push_back(op2Reg->GetRegNo());
             }
             break;
         }
         case BasicInstruction::FCMP: {
-            FcmpInstruction* fcmpInstr = dynamic_cast<FcmpInstruction*>(instr);
-            if(fcmpInstr) {
-                Operand op1 = fcmpInstr->GetOp1();
-                Operand op2 = fcmpInstr->GetOp2();
-                if((op1->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(op1)->GetRegNo() == reg_no) ||
-                   (op2->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(op2)->GetRegNo() == reg_no)) {
-                    return true;
-                }
+            FcmpInstruction* fcmpInstr = static_cast<FcmpInstruction*>(instr);
+            if(fcmpInstr->GetOp1()->GetOperandType() == BasicOperand::REG) {
+                RegOperand* op1Reg = static_cast<RegOperand*>(fcmpInstr->GetOp1());
+                regs.push_back(op1Reg->GetRegNo());
+            }
+            if(fcmpInstr->GetOp2()->GetOperandType() == BasicOperand::REG) {
+                RegOperand* op2Reg = static_cast<RegOperand*>(fcmpInstr->GetOp2());
+                regs.push_back(op2Reg->GetRegNo());
             }
             break;
         }
         case BasicInstruction::PHI: {
-            PhiInstruction* phiInstr = dynamic_cast<PhiInstruction*>(instr);
-            if(phiInstr) {
-                for(auto &val_label : phiInstr->GetPhiList()) {
-                    Operand val = val_label.first;
-                    if(val->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(val)->GetRegNo() == reg_no) {
-                        return true;
-                    }
+            PhiInstruction* phiInstr = static_cast<PhiInstruction*>(instr);
+            for(auto &val_label : phiInstr->GetPhiList()) {
+                Operand val = val_label.second;  // 正确地获取值
+                if(val->GetOperandType() == BasicOperand::REG) {
+                    RegOperand* valReg = static_cast<RegOperand*>(val);
+                    regs.push_back(valReg->GetRegNo());
                 }
             }
             break;
         }
         case BasicInstruction::CALL: {
-            CallInstruction* callInstr = dynamic_cast<CallInstruction*>(instr);
-            if(callInstr) {
-                for(auto &arg : callInstr->GetParameterList()) {
-                    if(arg.second->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(arg.second)->GetRegNo() == reg_no) {
-                        return true;
-                    }
+            CallInstruction* callInstr = static_cast<CallInstruction*>(instr);
+            for(auto &arg : callInstr->GetParameterList()) {
+                if(arg.second->GetOperandType() == BasicOperand::REG) {
+                    RegOperand* argReg = static_cast<RegOperand*>(arg.second);
+                    regs.push_back(argReg->GetRegNo());
+                }
+            }
+            // 注意：不再将结果寄存器作为使用寄存器添加
+            break;
+        }
+        case BasicInstruction::GETELEMENTPTR: {
+            GetElementptrInstruction* gepInstr = static_cast<GetElementptrInstruction*>(instr);
+            Operand ptr = gepInstr->GetPtrVal();
+            if(ptr->GetOperandType() == BasicOperand::REG) {
+                RegOperand* ptrReg = static_cast<RegOperand*>(ptr);
+                regs.push_back(ptrReg->GetRegNo());
+            }
+            for(auto &idx : gepInstr->GetIndexes()) {
+                if(idx->GetOperandType() == BasicOperand::REG) {
+                    RegOperand* idxReg = static_cast<RegOperand*>(idx);
+                    regs.push_back(idxReg->GetRegNo());
                 }
             }
             break;
         }
-        case BasicInstruction::GETELEMENTPTR: {
-            GetElementptrInstruction* gepInstr = dynamic_cast<GetElementptrInstruction*>(instr);
-            if(gepInstr) {
-                Operand ptr = gepInstr->GetPtrVal();
-                if(ptr->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(ptr)->GetRegNo() == reg_no) {
-                    return true;
-                }
-                for(auto &idx : gepInstr->GetIndexes()) {
-                    if(idx->GetOperandType() == BasicOperand::REG && dynamic_cast<RegOperand*>(idx)->GetRegNo() == reg_no) {
-                        return true;
-                    }
-                }
+        case BasicInstruction::RET: {
+            RetInstruction* retInstr = static_cast<RetInstruction*>(instr);
+            if(retInstr->GetRetVal() && retInstr->GetRetVal()->GetOperandType() == BasicOperand::REG) {
+                RegOperand* retReg = static_cast<RegOperand*>(retInstr->GetRetVal());
+                regs.push_back(retReg->GetRegNo());
+            }
+            break;
+        }
+        case BasicInstruction::BR_COND: {
+            BrCondInstruction* brCondInstr = static_cast<BrCondInstruction*>(instr);
+            Operand cond = brCondInstr->GetCond();
+            if(cond->GetOperandType() == BasicOperand::REG) {
+                RegOperand* condReg = static_cast<RegOperand*>(cond);
+                regs.push_back(condReg->GetRegNo());
+            }
+            break;
+        }
+        case BasicInstruction::BR_UNCOND: {
+            // 通常，无条件跳转不使用寄存器，但如果有使用寄存器的情况
+            BrUncondInstruction* brUncondInstr = static_cast<BrUncondInstruction*>(instr);
+            Operand dest = brUncondInstr->GetDestLabel();
+            if(dest->GetOperandType() == BasicOperand::REG) {
+                RegOperand* destReg = static_cast<RegOperand*>(dest);
+                regs.push_back(destReg->GetRegNo());
+            }
+            break;
+        }
+        case BasicInstruction::ALLOCA: {
+            AllocaInstruction* allocaInstr = static_cast<AllocaInstruction*>(instr);
+            // ALLOCA 通常不使用寄存器，但如果有指针操作数，需要处理
+            // 假设 ALLOCA 只有结果寄存器，无使用寄存器
+            // 如果有使用寄存器，需根据实际情况添加
+            break;
+        }
+        case BasicInstruction::ZEXT: {
+            ZextInstruction* zextInstr = static_cast<ZextInstruction*>(instr);
+            Operand src = zextInstr->GetSrc();
+            if(src->GetOperandType() == BasicOperand::REG) {
+                RegOperand* srcReg = static_cast<RegOperand*>(src);
+                regs.push_back(srcReg->GetRegNo());
+            }
+            break;
+        }
+        case BasicInstruction::FPTOSI: {
+            FptosiInstruction* fptosiInstr = static_cast<FptosiInstruction*>(instr);
+            Operand src = fptosiInstr->GetSrc();
+            if(src->GetOperandType() == BasicOperand::REG) {
+                RegOperand* srcReg = static_cast<RegOperand*>(src);
+                regs.push_back(srcReg->GetRegNo());
+            }
+            break;
+        }
+        case BasicInstruction::SITOFP: {
+            SitofpInstruction* sitofpInstr = static_cast<SitofpInstruction*>(instr);
+            Operand src = sitofpInstr->GetSrc();
+            if(src->GetOperandType() == BasicOperand::REG) {
+                RegOperand* srcReg = static_cast<RegOperand*>(src);
+                regs.push_back(srcReg->GetRegNo());
             }
             break;
         }
@@ -194,220 +281,57 @@ bool UsesRegister(BasicInstruction* instr, int reg_no) {
         default:
             break;
     }
-    return false;
+    return regs;
 }
+
 
 // 死代码消除函数
 void SimpleDCEPass::EliminateDeadCode(CFG *C) {
-    //************** 修改开始：预先构建def-use链 **************
-    // 使用一个map将reg_no映射到使用该寄存器的指令列表
-    std::unordered_map<int, std::vector<BasicInstruction*>> def_use_chain;
+    // 构建定义链：reg_no -> 定义该寄存器的指令
+    std::unordered_map<int, BasicInstruction*> def_chain;
     for(auto &[block_id, block] : *(C->block_map)) {
         for(auto &instr : block->Instruction_list) {
-            for (int reg_no = 0; reg_no < MAX_REGS; ++reg_no) {
-                if(UsesRegister(instr, reg_no)) {
-                    def_use_chain[reg_no].push_back(instr);
-                }
-            }
-        }
-    }
-    //************** 修改结束 **************
-
-    // 使用一个集合来存储有用的寄存器
-    std::unordered_set<int> useful_regs;
-    // 使用一个队列来处理有用的寄存器
-    std::queue<int> worklist;
-
-    // 步骤1：初始化工作列表
-    for(auto &[block_id, block] : *(C->block_map)) {
-        // 从后向前遍历指令列表
-        for(auto it = block->Instruction_list.rbegin(); it != block->Instruction_list.rend(); ++it) {
-            BasicInstruction* instr = *it;
-            if (HasSideEffect(instr)) {
-                // 对于有副作用的指令，标记其所有操作数为有用
-                switch (instr->GetOpcode()) {
-                    case BasicInstruction::STORE: {
-                        StoreInstruction* storeInstr = dynamic_cast<StoreInstruction*>(instr);
-                        if (storeInstr->GetValue()->GetOperandType() == BasicOperand::REG) {
-                            RegOperand* valReg = dynamic_cast<RegOperand*>(storeInstr->GetValue());
-                            if (valReg && useful_regs.find(valReg->GetRegNo()) == useful_regs.end()) {
-                                useful_regs.insert(valReg->GetRegNo());
-                                worklist.push(valReg->GetRegNo());
-                            }
-                        }
-                        if (storeInstr->GetPointer()->GetOperandType() == BasicOperand::REG) {
-                            RegOperand* ptrReg = dynamic_cast<RegOperand*>(storeInstr->GetPointer());
-                            if (ptrReg && useful_regs.find(ptrReg->GetRegNo()) == useful_regs.end()) {
-                                useful_regs.insert(ptrReg->GetRegNo());
-                                worklist.push(ptrReg->GetRegNo());
-                            }
-                        }
-                        break;
-                    }
-                    case BasicInstruction::CALL: {
-                        CallInstruction* callInstr = dynamic_cast<CallInstruction*>(instr);
-                        for(auto &arg : callInstr->GetParameterList()) {
-                            if(arg.second->GetOperandType() == BasicOperand::REG) {
-                                RegOperand* argReg = dynamic_cast<RegOperand*>(arg.second);
-                                if (argReg && useful_regs.find(argReg->GetRegNo()) == useful_regs.end()) {
-                                    useful_regs.insert(argReg->GetRegNo());
-                                    worklist.push(argReg->GetRegNo());
-                                }
-                            }
-                        }
-                        break;
-                    }
-                    case BasicInstruction::PHI: {
-                        PhiInstruction* phiInstr = dynamic_cast<PhiInstruction*>(instr);
-                        for(auto &val_label : phiInstr->GetPhiList()) {
-                            Operand val = val_label.first;
-                            if(val->GetOperandType() == BasicOperand::REG) {
-                                RegOperand* valReg = dynamic_cast<RegOperand*>(val);
-                                if(valReg && useful_regs.find(valReg->GetRegNo()) == useful_regs.end()) {
-                                    useful_regs.insert(valReg->GetRegNo());
-                                    worklist.push(valReg->GetRegNo());
-                                }
-                            }
-                        }
-                        break;
-                    }
-                    case BasicInstruction::RET: {
-                        RetInstruction* retInstr = dynamic_cast<RetInstruction*>(instr);
-                        if(retInstr->GetRetVal() && retInstr->GetRetVal()->GetOperandType() == BasicOperand::REG) {
-                            RegOperand* retReg = dynamic_cast<RegOperand*>(retInstr->GetRetVal());
-                            if(retReg && useful_regs.find(retReg->GetRegNo()) == useful_regs.end()) {
-                                useful_regs.insert(retReg->GetRegNo());
-                                worklist.push(retReg->GetRegNo());
-                            }
-                        }
-                        break;
-                    }
-                    // 处理更多具有副作用的指令类型
-                    default:
-                        break;
-                }
-            }
-
-            // 如果指令有结果寄存器，标记为有用
             int res_reg = GetResultRegNo(instr);
-            if(res_reg != -1 && useful_regs.find(res_reg) == useful_regs.end()) {
-                useful_regs.insert(res_reg);
-                worklist.push(res_reg);
+            if(res_reg != -1) {
+                // 在 SSA 形式下，每个寄存器只有一个定义
+                if(def_chain.find(res_reg) != def_chain.end()) {
+                    ERROR("Register %d has multiple definitions.", res_reg);
+                }
+                def_chain[res_reg] = instr;
             }
         }
     }
 
-    // 步骤2：迭代标记有用的寄存器
+    // 集合来存储有用的指令
+    std::unordered_set<BasicInstruction*> useful_instructions;
+    // 队列来处理有用的指令
+    std::queue<BasicInstruction*> worklist;
+
+    // 步骤1：初始化工作列表，将所有具有副作用的指令标记为有用
+    for(auto &[block_id, block] : *(C->block_map)) {
+        for(auto &instr : block->Instruction_list) {
+            if (HasSideEffect(instr)) {
+                if (useful_instructions.find(instr) == useful_instructions.end()) {
+                    useful_instructions.insert(instr);
+                    worklist.push(instr);
+                }
+            }
+        }
+    }
+
+    // 步骤2：迭代标记有用的指令
     while(!worklist.empty()) {
-        int reg = worklist.front();
+        BasicInstruction* instr = worklist.front();
         worklist.pop();
 
-        // 使用预先构建的def-use链来快速找到使用该reg的指令
-        if(def_use_chain.find(reg) != def_use_chain.end()) {
-            for(auto *instr : def_use_chain[reg]) {
-                // 获取该指令的结果寄存器
-                int instr_res_reg = GetResultRegNo(instr);
-                if(instr_res_reg != -1 && useful_regs.find(instr_res_reg) == useful_regs.end()) {
-                    useful_regs.insert(instr_res_reg);
-                    worklist.push(instr_res_reg);
-                }
-
-                // 根据指令类型，标记其操作数为有用
-                switch(instr->GetOpcode()) {
-                    case BasicInstruction::ADD:
-                    case BasicInstruction::SUB:
-                    case BasicInstruction::MUL:
-                    case BasicInstruction::DIV:
-                    case BasicInstruction::BITXOR:
-                    case BasicInstruction::MOD:
-                    case BasicInstruction::FADD:
-                    case BasicInstruction::FSUB:
-                    case BasicInstruction::FMUL:
-                    case BasicInstruction::FDIV: {
-                        ArithmeticInstruction* arithInstr = dynamic_cast<ArithmeticInstruction*>(instr);
-                        if(arithInstr) {
-                            Operand op1 = arithInstr->GetOperand1();
-                            Operand op2 = arithInstr->GetOperand2();
-                            if(op1->GetOperandType() == BasicOperand::REG) {
-                                RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
-                                if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
-                                    useful_regs.insert(op1Reg->GetRegNo());
-                                    worklist.push(op1Reg->GetRegNo());
-                                }
-                            }
-                            if(op2->GetOperandType() == BasicOperand::REG) {
-                                RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
-                                if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
-                                    useful_regs.insert(op2Reg->GetRegNo());
-                                    worklist.push(op2Reg->GetRegNo());
-                                }
-                            }
-                        }
-                        break;
-                    }
-                    case BasicInstruction::ICMP: {
-                        IcmpInstruction* icmpInstr = dynamic_cast<IcmpInstruction*>(instr);
-                        if(icmpInstr) {
-                            Operand op1 = icmpInstr->GetOp1();
-                            Operand op2 = icmpInstr->GetOp2();
-                            if(op1->GetOperandType() == BasicOperand::REG) {
-                                RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
-                                if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
-                                    useful_regs.insert(op1Reg->GetRegNo());
-                                    worklist.push(op1Reg->GetRegNo());
-                                }
-                            }
-                            if(op2->GetOperandType() == BasicOperand::REG) {
-                                RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
-                                if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
-                                    useful_regs.insert(op2Reg->GetRegNo());
-                                    worklist.push(op2Reg->GetRegNo());
-                                }
-                            }
-                        }
-                        break;
-                    }
-                    case BasicInstruction::FCMP: {
-                        FcmpInstruction* fcmpInstr = dynamic_cast<FcmpInstruction*>(instr);
-                        if(fcmpInstr) {
-                            Operand op1 = fcmpInstr->GetOp1();
-                            Operand op2 = fcmpInstr->GetOp2();
-                            if(op1->GetOperandType() == BasicOperand::REG) {
-                                RegOperand* op1Reg = dynamic_cast<RegOperand*>(op1);
-                                if(op1Reg && useful_regs.find(op1Reg->GetRegNo()) == useful_regs.end()) {
-                                    useful_regs.insert(op1Reg->GetRegNo());
-                                    worklist.push(op1Reg->GetRegNo());
-                                }
-                            }
-                            if(op2->GetOperandType() == BasicOperand::REG) {
-                                RegOperand* op2Reg = dynamic_cast<RegOperand*>(op2);
-                                if(op2Reg && useful_regs.find(op2Reg->GetRegNo()) == useful_regs.end()) {
-                                    useful_regs.insert(op2Reg->GetRegNo());
-                                    worklist.push(op2Reg->GetRegNo());
-                                }
-                            }
-                        }
-                        break;
-                    }
-                    case BasicInstruction::PHI: {
-                        PhiInstruction* phiInstr = dynamic_cast<PhiInstruction*>(instr);
-                        if(phiInstr) {
-                            for(auto &val_label : phiInstr->GetPhiList()) {
-                                Operand val = val_label.first;
-                                if(val->GetOperandType() == BasicOperand::REG) {
-                                    RegOperand* valReg = dynamic_cast<RegOperand*>(val);
-                                    if(valReg && useful_regs.find(valReg->GetRegNo()) == useful_regs.end()) {
-                                        useful_regs.insert(valReg->GetRegNo());
-                                        worklist.push(valReg->GetRegNo());
-                                    }
-                                }
-                            }
-                        }
-                        break;
-                    }
-                    // 处理更多指令类型
-                    default:
-                        break;
+        // 获取指令使用的所有寄存器号
+        std::vector<int> used_regs = GetUsedRegisters(instr);
+        for(auto reg_no : used_regs) {
+            if(def_chain.find(reg_no) != def_chain.end()) {
+                BasicInstruction* def_instr = def_chain[reg_no];
+                if(useful_instructions.find(def_instr) == useful_instructions.end()) {
+                    useful_instructions.insert(def_instr);
+                    worklist.push(def_instr);
                 }
             }
         }
@@ -415,15 +339,14 @@ void SimpleDCEPass::EliminateDeadCode(CFG *C) {
 
     // 步骤3：删除未标记为有用的指令
     for(auto &[block_id, block] : *(C->block_map)) {
-        // 使用迭代器安全删除指令
         for(auto it = block->Instruction_list.begin(); it != block->Instruction_list.end(); ) {
             BasicInstruction* instr = *it;
-            int res_reg = GetResultRegNo(instr);
-            if(res_reg != -1 && useful_regs.find(res_reg) == useful_regs.end()) {
+            if(useful_instructions.find(instr) == useful_instructions.end()) {
                 // 无用的指令，删除
                 delete instr;
                 it = block->Instruction_list.erase(it);
-            } else {
+            }
+            else {
                 // 有用的指令，保留
                 ++it;
             }
