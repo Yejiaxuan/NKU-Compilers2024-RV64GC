@@ -302,6 +302,8 @@ public:
     virtual void PrintIR(std::ostream &s) = 0;
     virtual void ReplaceRegByMap(const std::map<int, int> &Rule) = 0;
     virtual Instruction CopyInstruction() = 0;
+    virtual int GetResultRegNo() = 0;
+    virtual std::vector<int> GetUsedRegisters() = 0;
 };
 
 // load
@@ -326,6 +328,8 @@ public:
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
     
 };
 
@@ -353,6 +357,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 //<result>=add <ty> <op1>,<op2>
@@ -399,6 +405,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 //<result>=icmp <cond> <ty> <op1>,<op2>
@@ -430,6 +438,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 //<result>=fcmp <cond> <ty> <op1>,<op2>
@@ -458,6 +468,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 // phi syntax:
@@ -486,6 +498,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 // alloca
@@ -515,6 +529,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 // Conditional branch
@@ -539,6 +555,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 // Unconditional branch
@@ -556,6 +574,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 /*
@@ -586,6 +606,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction() { return nullptr; }
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 class GlobalStringConstInstruction : public BasicInstruction {
@@ -599,6 +621,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction() { return nullptr; }
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 /*
@@ -649,6 +673,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 /*
@@ -678,6 +704,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 /*
@@ -725,6 +753,8 @@ public:
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 class FunctionDefineInstruction : public BasicInstruction {
@@ -749,6 +779,8 @@ public:
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction() { return nullptr; }
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 typedef FunctionDefineInstruction *FuncDefInstruction;
 
@@ -770,6 +802,8 @@ public:
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction() { return nullptr; }
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -788,6 +822,8 @@ public:
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -807,6 +843,8 @@ public:
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 // 无符号扩展，你大概率需要它来将i1无符号扩展至i32(即对应c语言bool类型转int)
@@ -827,6 +865,8 @@ public:
     void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     virtual Instruction CopyInstruction();
+    virtual int GetResultRegNo();
+    virtual std::vector<int> GetUsedRegisters();
 };
 
 std::ostream &operator<<(std::ostream &s, BasicInstruction::LLVMType type);

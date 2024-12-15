@@ -534,3 +534,234 @@ void ZextInstruction::ReplaceRegByMap(const std::map<int, int> &Rule) {
             value = GetNewRegOperand(Rule.find(result_reg->GetRegNo())->second);
     }
 }
+
+int LoadInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> LoadInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (pointer->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)pointer)->GetRegNo());
+    }
+    return regs;
+}
+
+int StoreInstruction::GetResultRegNo() {
+    // store没有结果寄存器
+    return -1;
+}
+std::vector<int> StoreInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (value->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)value)->GetRegNo());
+    }
+    if (pointer->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)pointer)->GetRegNo());
+    }
+    return regs;
+}
+
+int ArithmeticInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> ArithmeticInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (op1->GetOperandType() == BasicOperand::REG) regs.push_back(((RegOperand*)op1)->GetRegNo());
+    if (op2->GetOperandType() == BasicOperand::REG) regs.push_back(((RegOperand*)op2)->GetRegNo());
+    if (op3 && op3->GetOperandType() == BasicOperand::REG) regs.push_back(((RegOperand*)op3)->GetRegNo());
+    return regs;
+}
+
+int IcmpInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> IcmpInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (op1->GetOperandType() == BasicOperand::REG) regs.push_back(((RegOperand*)op1)->GetRegNo());
+    if (op2->GetOperandType() == BasicOperand::REG) regs.push_back(((RegOperand*)op2)->GetRegNo());
+    return regs;
+}
+
+int FcmpInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> FcmpInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (op1->GetOperandType() == BasicOperand::REG) regs.push_back(((RegOperand*)op1)->GetRegNo());
+    if (op2->GetOperandType() == BasicOperand::REG) regs.push_back(((RegOperand*)op2)->GetRegNo());
+    return regs;
+}
+
+int PhiInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> PhiInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    for (auto &pair : GetPhiList()) {
+        Operand val = pair.second;
+        if (val->GetOperandType() == BasicOperand::REG) {
+            regs.push_back(((RegOperand*)val)->GetRegNo());
+        }
+    }
+    return regs;
+}
+
+int AllocaInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> AllocaInstruction::GetUsedRegisters() {
+    return {}; // alloca无使用寄存器
+}
+
+int BrCondInstruction::GetResultRegNo() {
+    // 无结果寄存器
+    return -1;
+}
+std::vector<int> BrCondInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (cond->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)cond)->GetRegNo());
+    }
+    return regs;
+}
+
+int BrUncondInstruction::GetResultRegNo() {
+    return -1;
+}
+std::vector<int> BrUncondInstruction::GetUsedRegisters() {
+    return {}; // 无条件跳转无使用寄存器
+}
+
+int GlobalVarDefineInstruction::GetResultRegNo() {
+    return -1; // 定义指令无返回值寄存器
+}
+std::vector<int> GlobalVarDefineInstruction::GetUsedRegisters() {
+    return {}; 
+}
+
+int GlobalStringConstInstruction::GetResultRegNo() {
+    return -1;
+}
+std::vector<int> GlobalStringConstInstruction::GetUsedRegisters() {
+    return {};
+}
+
+int CallInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> CallInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    for (auto &arg : GetParameterList()) {
+        if (arg.second->GetOperandType() == BasicOperand::REG) {
+            regs.push_back(((RegOperand*)arg.second)->GetRegNo());
+        }
+    }
+    return regs;
+}
+
+int RetInstruction::GetResultRegNo() {
+    return -1; // ret本身无结果寄存器
+}
+std::vector<int> RetInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (ret_val && ret_val->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)ret_val)->GetRegNo());
+    }
+    return regs;
+}
+
+int GetElementptrInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> GetElementptrInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (ptrval->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)ptrval)->GetRegNo());
+    }
+    for (auto &idx : indexes) {
+        if (idx->GetOperandType() == BasicOperand::REG) {
+            regs.push_back(((RegOperand*)idx)->GetRegNo());
+        }
+    }
+    return regs;
+}
+
+int FunctionDefineInstruction::GetResultRegNo() {
+    return -1;
+}
+std::vector<int> FunctionDefineInstruction::GetUsedRegisters() {
+    return {};
+}
+
+int FunctionDeclareInstruction::GetResultRegNo() {
+    return -1;
+}
+std::vector<int> FunctionDeclareInstruction::GetUsedRegisters() {
+    return {};
+}
+
+int FptosiInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> FptosiInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (value->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)value)->GetRegNo());
+    }
+    return regs;
+}
+
+int SitofpInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> SitofpInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (value->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)value)->GetRegNo());
+    }
+    return regs;
+}
+
+int ZextInstruction::GetResultRegNo() {
+    if (result && result->GetOperandType() == BasicOperand::REG) {
+        return ((RegOperand*)result)->GetRegNo();
+    }
+    return -1;
+}
+std::vector<int> ZextInstruction::GetUsedRegisters() {
+    std::vector<int> regs;
+    if (value->GetOperandType() == BasicOperand::REG) {
+        regs.push_back(((RegOperand*)value)->GetRegNo());
+    }
+    return regs;
+}
