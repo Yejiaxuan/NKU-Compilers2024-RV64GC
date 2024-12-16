@@ -6,6 +6,7 @@
 #include "../optimize/transform/simplify_cfg.h"
 #include "../optimize/transform/simple_dce.h"
 #include "../optimize/transform/inline.h"
+#include "../optimize/transform/simple_adce.h"
 
 #include "../optimize/analysis/dominator_tree.h"
 
@@ -173,6 +174,7 @@ int main(int argc, char **argv) {
         
         SimpleDCEPass(&llvmIR).Execute();
 
+	ADCEPass(&llvmIR, &dom).Execute();
         //InlinePass(&llvmIR).Execute();
 
         // TODO: add more passes
