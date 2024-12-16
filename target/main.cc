@@ -173,7 +173,7 @@ int main(int argc, char **argv) {
         
         SimpleDCEPass(&llvmIR).Execute();
 
-        InlinePass(&llvmIR).Execute();
+        //InlinePass(&llvmIR).Execute();
 
         // TODO: add more passes
     }
