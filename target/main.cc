@@ -5,6 +5,7 @@
 #include "../optimize/transform/mem2reg.h"
 #include "../optimize/transform/simplify_cfg.h"
 #include "../optimize/transform/simple_dce.h"
+#include "../optimize/transform/inline.h"
 
 #include "../optimize/analysis/dominator_tree.h"
 
@@ -171,6 +172,8 @@ int main(int argc, char **argv) {
         (Mem2RegPass(&llvmIR, &dom)).Execute();
         
         SimpleDCEPass(&llvmIR).Execute();
+
+        InlinePass(&llvmIR).Execute();
 
         // TODO: add more passes
     }

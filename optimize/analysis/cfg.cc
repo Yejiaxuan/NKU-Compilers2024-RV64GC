@@ -135,3 +135,11 @@ std::vector<LLVMBlock> CFG::GetSuccessor(LLVMBlock B) { return G[B->block_id]; }
 
 std::vector<LLVMBlock> CFG::GetSuccessor(int bbid) { return G[bbid]; }
 
+LLVMBlock CFG::GetBlock(int bbid) { return (*block_map)[bbid]; }
+
+LLVMBlock CFG::NewBlock() {
+    ++max_label;
+    // std::cerr<<function_def->GetFunctionName()<<'\n';
+    (*block_map)[max_label] = new BasicBlock(max_label);
+    return GetBlock(max_label);
+}

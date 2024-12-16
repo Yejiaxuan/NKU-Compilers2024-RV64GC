@@ -765,3 +765,138 @@ std::vector<int> ZextInstruction::GetUsedRegisters() {
     }
     return regs;
 }
+
+std::vector<Operand> LoadInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(pointer);
+    return ret;
+}
+
+std::vector<Operand> StoreInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(pointer);
+    ret.push_back(value);
+    return ret;
+}
+
+std::vector<Operand> ArithmeticInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(op1);
+    ret.push_back(op2);
+    if (op3 != nullptr) {
+        ret.push_back(op3);
+    }
+    return ret;
+}
+
+std::vector<Operand> IcmpInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(op1);
+    ret.push_back(op2);
+    // ret.push_back(cond);
+    return ret;
+}
+
+std::vector<Operand> FcmpInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(op1);
+    ret.push_back(op2);
+    // ret.push_back(cond);
+    return ret;
+}
+
+std::vector<Operand> PhiInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    for (auto label_val_pair : phi_list) {
+        ret.push_back(label_val_pair.second);
+    }
+    return ret;
+}
+
+std::vector<Operand> BrCondInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(cond);
+    return ret;
+}
+
+std::vector<Operand> CallInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    for (auto arg_pair : args) {
+        ret.push_back(arg_pair.second);
+    }
+    return ret;
+}
+
+std::vector<Operand> RetInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    if (ret_val != NULL)
+        ret.push_back(ret_val);
+    return ret;
+}
+
+std::vector<Operand> GetElementptrInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret(indexes);
+    ret.push_back(ptrval);
+    return ret;
+}
+
+
+std::vector<Operand> FunctionDefineInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    std::cerr << "func_define_Instruction get_nonresult_operands()\n";
+    return ret;
+}
+
+std::vector<Operand> FunctionDeclareInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    std::cerr << "func_declare_Instruction get_nonresult_operands()\n";
+    return ret;
+}
+
+std::vector<Operand> FptosiInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(value);
+    return ret;
+}
+
+std::vector<Operand> SitofpInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(value);
+    return ret;
+}
+
+std::vector<Operand> ZextInstruction::GetNonResultOperands() {
+    std::vector<Operand> ret;
+    ret.push_back(value);
+    return ret;
+}
+
+void PhiInstruction::ReplaceLabelByMap(const std::map<int, int> &Rule) {
+    for (auto &[label, val] : phi_list) {
+        auto l = (LabelOperand *)label;
+        if (Rule.find(l->GetLabelNo()) != Rule.end()) {
+            label = GetNewLabelOperand(Rule.find(l->GetLabelNo())->second);
+        }
+    }
+}
+
+void BrCondInstruction::ReplaceLabelByMap(const std::map<int, int> &Rule) {
+    auto true_label = (LabelOperand *)this->trueLabel;
+    auto false_label = (LabelOperand *)this->falseLabel;
+
+    if (Rule.find(true_label->GetLabelNo()) != Rule.end()) {
+        trueLabel = GetNewLabelOperand(Rule.find(true_label->GetLabelNo())->second);
+    }
+
+    if (Rule.find(false_label->GetLabelNo()) != Rule.end()) {
+        falseLabel = GetNewLabelOperand(Rule.find(false_label->GetLabelNo())->second);
+    }
+}
+
+void BrUncondInstruction::ReplaceLabelByMap(const std::map<int, int> &Rule) {
+    auto dest_label = (LabelOperand *)this->destLabel;
+
+    if (Rule.find(dest_label->GetLabelNo()) != Rule.end()) {
+        destLabel = GetNewLabelOperand(Rule.find(dest_label->GetLabelNo())->second);
+    }
+}

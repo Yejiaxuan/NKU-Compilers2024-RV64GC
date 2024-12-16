@@ -9,7 +9,7 @@ private:
     // 内联行数阈值(例如200行)
     static const int INLINE_THRESHOLD = 200;
 
-    bool CanInlineFunction(FuncDefInstruction funcDef);
+    bool CanInlineFunction(FuncDefInstruction funcDef, int caller_instr_count);
     void InlineFunctionCall(CFG *callerCFG, BasicBlock *callerBlock, CallInstruction *callInst, FuncDefInstruction calleeFunc);
 
 public:
