@@ -109,6 +109,7 @@ void CFG::BuildCFG() {
                 case BasicInstruction::RET: {
                     // 返回指令，没有后继基本块
                     flag = 1;  // 设置flag，表示已经处理过跳转指令
+                    ret_block = block;
                     continue;
                 }
             }
