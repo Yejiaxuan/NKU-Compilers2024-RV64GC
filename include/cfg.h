@@ -32,8 +32,6 @@ public:
     std::vector<LLVMBlock> GetPredecessor(int bbid);
     std::vector<LLVMBlock> GetSuccessor(LLVMBlock B);
     std::vector<LLVMBlock> GetSuccessor(int bbid);
-    LLVMBlock GetBlock(int bbid);
-    LLVMBlock NewBlock();
 };
 
 #endif

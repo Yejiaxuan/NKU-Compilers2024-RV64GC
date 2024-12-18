@@ -9,110 +9,154 @@ void SimplifyCFGPass::Execute() {
 // 删除从函数入口开始到达不了的基本块和指令
 // 不需要考虑控制流为常量的情况，你只需要从函数入口基本块(0号基本块)开始DFS，将没有被访问到的基本块和指令删去即可
 void SimplifyCFGPass::EliminateUnreachedBlocksInsts(CFG *C) { 
-    // 步骤 1：执行深度优先搜索（DFS）以找出可达的基本块
-    std::vector<bool> visited(C->G.size(), false);
-    std::stack<int> s; // DFS 使用的栈
+    auto &blocks = *(C->block_map);
+    std::map<int, bool> visited;
+    std::stack<int> s;
     s.push(0); // 从入口块（ID 为0）开始
 
     while(!s.empty()){
         int cur = s.top();
         s.pop();
 
-        if(visited[cur]){
-            continue; // 如果当前基本块已访问，跳过
-        }
-
+        if (visited[cur]) continue;
         visited[cur] = true;
 
-        for(auto &nxt : C->G[cur]){
-            if(!visited[nxt->block_id]){
-                s.push(nxt->block_id);
-            }
-        }
+        // 修剪不可达指令，保留到最后一条有效指令
+        TrimUnreachableInstructions(C, cur);
+
+        // 获取基本块的最后一条指令并处理跳转逻辑
+        ProcessBlockLastInstruction(C, visited, cur, s);
     }
 
-    // 步骤 2：收集不可达的基本块
-    std::vector<int> unreachable_block_ids;
-    for(int i = 0; i < static_cast<int>(visited.size()); i++){
-        if(!visited[i]){
-            unreachable_block_ids.push_back(i);
-        }
-    }
-
-    // 步骤 3：删除不可达的基本块和指令
-    for(int block_id : unreachable_block_ids){
-        auto it = C->block_map->find(block_id);
-        if(it != C->block_map->end()){
-            LLVMBlock unreachable_block = it->second;
-
-            // 删除基本块中的指令
-            for(auto instr : unreachable_block->Instruction_list){
-                delete instr; // 假设指令是动态分配的内存
-            }
-            unreachable_block->Instruction_list.clear();
-
-            // 从 block_map 中删除该基本块
-            delete unreachable_block; // 假设基本块是动态分配的
-            C->block_map->erase(it);
-        }
-
-        // 清空 G 和 invG 中的连接
-        if(block_id < static_cast<int>(C->G.size())){
-            C->G[block_id].clear();
-        }
-        if(block_id < static_cast<int>(C->invG.size())){
-            C->invG[block_id].clear();
-        }
-    }
-
-    // 步骤 4：更新 G 和 invG，移除指向不可达块的边
-    for(int i = 0; i < static_cast<int>(C->G.size()); i++){
-        if(visited[i]){
-            std::vector<LLVMBlock> newSuccessors;
-            for(auto &succ_block : C->G[i]){
-                if(visited[succ_block->block_id]){
-                    newSuccessors.push_back(succ_block);
-                }
-            }
-            C->G[i] = newSuccessors;
-        }
-    }
-
-    for(int i = 0; i < static_cast<int>(C->invG.size()); i++){
-        if(visited[i]){
-            std::vector<LLVMBlock> newPredecessors;
-            for(auto &pred_block : C->invG[i]){
-                if(visited[pred_block->block_id]){
-                    newPredecessors.push_back(pred_block);
-                }
-            }
-            C->invG[i] = newPredecessors;
-        }
-    }
-
-    // 步骤 5：处理可达块中的指令，删除跳转或返回指令后的所有指令
-    for(auto &[block_id, block] : *C->block_map){
-        // 使用索引遍历，以便安全删除后续指令
-        for(int i = 0; i < static_cast<int>(block->Instruction_list.size()); i++){
-            BasicInstruction* instr = block->Instruction_list[i];
-            NodeAttribute::opcode opcode = static_cast<NodeAttribute::opcode>(instr->GetOpcode());
-
-            if(opcode == BasicInstruction::BR_COND ||
-               opcode == BasicInstruction::BR_UNCOND ||
-               opcode == BasicInstruction::RET){
-
-                // 删除当前指令后的所有指令
-                for(int j = i + 1; j < static_cast<int>(block->Instruction_list.size()); j++){
-                    delete block->Instruction_list[j]; // 假设指令是动态分配的内存
-                }
-
-                // 截断指令列表到当前指令位置
-                block->Instruction_list.erase(block->Instruction_list.begin() + i + 1, block->Instruction_list.end());
-
-                // 跳转或返回指令后面的指令已删除，退出当前指令列表的遍历
-                break;
-            }
-        }
-    }
+    // 删除不可达的基本块
+    RemoveUnreachableBlocks(C, visited);
     //TODO("EliminateUnreachedBlocksInsts"); 
+}
+
+void SimplifyCFGPass::TrimUnreachableInstructions(CFG *C, int block_id) {
+    auto &blocks = *(C->block_map);
+    auto &block = blocks[block_id];
+    auto &blockList = block->Instruction_list;
+
+    int ret_pos = blockList.size();
+    for (int i = 0; i < blockList.size(); i++) {
+        if (blockList[i]->GetOpcode() == BasicInstruction::RET) {
+            ret_pos = i;
+            break;
+        }
+    }
+
+    while (blockList.size() > ret_pos + 1) {
+        auto last_inst = blockList.back();
+        if (last_inst->GetOpcode() == BasicInstruction::BR_UNCOND) {
+            RemoveUnconditionalBranch(C, block_id, last_inst);
+        } else if (last_inst->GetOpcode() == BasicInstruction::BR_COND) {
+            RemoveConditionalBranch(C, block_id, last_inst);
+        }
+        blockList.pop_back();
+    }
+}
+
+void SimplifyCFGPass::RemoveUnconditionalBranch(CFG *C, int block_id, Instruction last_inst) {
+    auto bruncond = static_cast<BrUncondInstruction *>(last_inst);
+    int target_block_no = static_cast<LabelOperand *>(bruncond->GetDestLabel())->GetLabelNo();
+    RemoveEdgeFromGraph(C, block_id, target_block_no);
+}
+
+void SimplifyCFGPass::RemoveConditionalBranch(CFG *C, int block_id, Instruction last_inst) {
+    auto brcond = static_cast<BrCondInstruction *>(last_inst);
+    int true_block_no = static_cast<LabelOperand *>(brcond->GetTrueLabel())->GetLabelNo();
+    int false_block_no = static_cast<LabelOperand *>(brcond->GetFalseLabel())->GetLabelNo();
+
+    RemoveEdgeFromGraph(C, block_id, true_block_no);
+    RemoveEdgeFromGraph(C, block_id, false_block_no);
+}
+
+void SimplifyCFGPass::RemoveEdgeFromGraph(CFG *C, int block_id, int target_block_no) {
+    for (int i = 0; i < C->G[block_id].size(); i++) {
+        if (C->G[block_id][i]->block_id == target_block_no) {
+            C->G[block_id].erase(C->G[block_id].begin() + i);
+            break;
+        }
+    }
+    for (int i = 0; i < C->invG[target_block_no].size(); i++) {
+        if (C->invG[target_block_no][i]->block_id == block_id) {
+            C->invG[target_block_no].erase(C->invG[target_block_no].begin() + i);
+            break;
+        }
+    }
+}
+
+void SimplifyCFGPass::ProcessBlockLastInstruction(CFG *C, std::map<int, bool> &visited, int block_id, std::stack<int> &s) {
+    auto &blocks = *(C->block_map);
+    auto &block = blocks[block_id];
+    auto &blockList = block->Instruction_list;
+
+    // 获取基本块的最后一条指令
+    Instruction blocklast = blockList.empty() ? nullptr : blockList.back();
+
+    // 根据最后一条指令处理跳转逻辑
+    if (blocklast) {
+        if (blocklast->GetOpcode() == BasicInstruction::BR_UNCOND) {
+            auto bruncond = static_cast<BrUncondInstruction *>(blocklast);
+            int target_block_no = static_cast<LabelOperand *>(bruncond->GetDestLabel())->GetLabelNo();
+            if (!visited[target_block_no])
+                s.push(target_block_no);
+        } else if (blocklast->GetOpcode() == BasicInstruction::BR_COND) {
+            auto brcond = static_cast<BrCondInstruction *>(blocklast);
+            int true_block_no = static_cast<LabelOperand *>(brcond->GetTrueLabel())->GetLabelNo();
+            int false_block_no = static_cast<LabelOperand *>(brcond->GetFalseLabel())->GetLabelNo();
+            if (!visited[true_block_no])
+                s.push(true_block_no);
+            if (!visited[false_block_no])
+                s.push(false_block_no);
+        }
+    }
+}
+
+void SimplifyCFGPass::RemoveUnreachableBlocks(CFG *C, std::map<int, bool> &visited) {
+    auto &blocks = *(C->block_map);
+    std::set<int> deadbb_set;
+    std::queue<int> deadblocks;
+
+    // 收集所有不可达的基本块
+    for (const auto &id_block_pair : blocks) {
+        if (!visited[id_block_pair.first]) {
+            deadblocks.push(id_block_pair.first);
+            deadbb_set.insert(id_block_pair.first);
+        }
+    }
+
+    // 删除图中指向不可达基本块的边
+    for (int i = 0; i < C->G.size(); i++) {
+        if (deadbb_set.find(i) != deadbb_set.end()) {
+            C->G[i].clear();
+            continue;
+        }
+        for (int j = 0; j < C->G[i].size(); j++) {
+            if (deadbb_set.find(C->G[i][j]->block_id) != deadbb_set.end()) {
+                C->G[i].erase(C->G[i].begin() + j);
+                j--;
+            }
+        }
+    }
+
+    for (int i = 0; i < C->invG.size(); i++) {
+        if (deadbb_set.find(i) != deadbb_set.end()) {
+            C->invG[i].clear();
+            continue;
+        }
+        for (int j = 0; j < C->invG[i].size(); j++) {
+            if (deadbb_set.find(C->invG[i][j]->block_id) != deadbb_set.end()) {
+                C->invG[i].erase(C->invG[i].begin() + j);
+                j--;
+            }
+        }
+    }
+
+    // 删除不可达的基本块
+    while (!deadblocks.empty()) {
+        blocks.erase(deadblocks.front());
+        deadblocks.pop();
+    }
 }
