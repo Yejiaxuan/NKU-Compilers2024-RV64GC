@@ -5,60 +5,124 @@
 #include "../analysis/dominator_tree.h"
 #include <iostream>
 
-
 extern std::map<std::string, CFG *> CFGMap;
 extern FunctionCallGraph fcallgraph;
-// extern std::unordered_map<CFG *, std::unordered_map<CFG *,std::vector<Instruction>>> fcallgraph.CGCallI;
-// extern std::unordered_map<CFG *,size_t> fcallgraph.CGINum;
-static std::unordered_map<CFG *, bool> CFGvis;
-static std::unordered_map<Instruction, bool> reinlinecallI;
-static bool is_reinline = false;
 
-// we process function call in bottom-up order(CallGraphSCC)
-// in SysY2022, the SCC's size <= 1, so we only need to consider self-recursive
-// after each iterations, we need to use SCCP, SimplifyCFG to optimize the cfg
-/*
-    InlineDFS(CFG* now) {
-
-        for(auto v: CG->GetSuccessor(now)) {
-
-            if(v == now){ // now has self-recursive
-                continue;
-            }
-
-            InlineDFS(v);
-
-            if(v is self-recursive) { // do not inline
-                continue;
-            }
-
-            for(auto t : call v in now){ //other situations
-                if(inline t is better) {
-                    inline t -> now;
-                }
-            }
-
+void InlinePass::MakeFunctionOneExit(CFG *C) {
+    std::queue<LLVMBlock> OneExitqueue;
+    enum BasicInstruction::LLVMType ret_type = BasicInstruction::VOID;
+    int ret_cnt = 0;
+    for (auto [id, bb] : *C->block_map) {
+        auto I = bb->Instruction_list.back();
+        if (I->GetOpcode() != BasicInstruction::RET) {
+            continue;
         }
-        if(exist self-recursive){ // now has self-recursive
-            while(inline self is better){
-                for(auto t : call self in now){
-                    if(inline self is better){
-                        inline t -> now
-                    }
-                }
-            }
-        }
-
-        BuildCFG;
-        BuildDomTree;
-        SCCP(now);
-        SimplifyCFG(now);
+        ret_cnt++;
+        auto RetI = (RetInstruction *)I;
+        ret_type = RetI->GetType();
+        OneExitqueue.push(bb);
     }
-*/
+    if (ret_cnt == 0) {
+        C->block_map->clear();
+        C->max_label = -1;
+        C->max_reg = -1;
+        auto bb = C->NewBlock();
+        if (C->function_def->GetReturnType() == BasicInstruction::VOID) {
+            bb->InsertInstruction(1, new RetInstruction(BasicInstruction::VOID, nullptr));
+        } else if (C->function_def->GetReturnType() == BasicInstruction::I32) {
+            bb->InsertInstruction(1, new RetInstruction(BasicInstruction::I32, new ImmI32Operand(0)));
+        } else if (C->function_def->GetReturnType() == BasicInstruction::FLOAT32) {
+            bb->InsertInstruction(1, new RetInstruction(BasicInstruction::FLOAT32, new ImmF32Operand(0)));
+        } else {
+            ERROR("Unexpected Type");
+        }
+        C->ret_block = bb;
+        C->BuildCFG();
+        return;
+    }
+    if (ret_cnt == 1) {
+        C->ret_block = OneExitqueue.front();
+        if (!OneExitqueue.empty()) {
+            OneExitqueue.pop();
+        }
+        return;
+    }
+    auto B = C->NewBlock();
+    if (ret_type != BasicInstruction::VOID) {
+        auto ret_ptr = GetNewRegOperand(++C->max_reg);
+        auto B_Retreg = GetNewRegOperand(++C->max_reg);
+        auto bb0 = C->block_map->begin()->second;
+        auto AllocaI = new AllocaInstruction(ret_type, ret_ptr);
+        bb0->InsertInstruction(0, AllocaI);
+        while (!OneExitqueue.empty()) {
+            auto bb = OneExitqueue.front();
+            OneExitqueue.pop();
+            auto RetI = (RetInstruction *)bb->Instruction_list.back();
+            bb->Instruction_list.pop_back();
+            bb->InsertInstruction(1, new StoreInstruction(ret_type, ret_ptr, RetI->GetRetVal()));
+            bb->InsertInstruction(1, new BrUncondInstruction(GetNewLabelOperand(B->block_id)));
+        }
+        B->InsertInstruction(1, new LoadInstruction(ret_type, ret_ptr, B_Retreg));
+        B->InsertInstruction(1, new RetInstruction(ret_type, B_Retreg));
+    } else {
+        while (!OneExitqueue.empty()) {
+            auto bb = OneExitqueue.front();
+            OneExitqueue.pop();
+            bb->Instruction_list.pop_back();
+            bb->InsertInstruction(1, new BrUncondInstruction(GetNewLabelOperand(B->block_id)));
+        }
+        B->InsertInstruction(1, new RetInstruction(BasicInstruction::VOID, nullptr));
+    }
 
-Operand InlineCFG(CFG *uCFG, CFG *vCFG, LLVMBlock StartBB, LLVMBlock EndBB, std::map<int, int> &reg_replace_map,
+    C->ret_block = B;
+    C->BuildCFG();
+}
+
+void InlinePass::RetMotion(CFG *C) {
+    if (C->function_def->GetReturnType() != BasicInstruction::VOID) {
+        return;
+    }
+
+    auto blockmap = *C->block_map;
+    std::function<int(int)> GetRetBB = [&](int ubbid) {
+        if (C->G[ubbid].empty()) {
+            return -1;
+        }
+        while (!C->G[ubbid].empty()) {
+            if (C->G[ubbid].size() >= 2) {
+                return -1;
+            }
+            ubbid = C->G[ubbid][0]->block_id;
+            auto bb = blockmap[ubbid];
+            if (bb->Instruction_list.size() > 1) {
+                return -1;
+            }
+        }
+        return ubbid;
+    };
+
+    for (auto [id, bb] : blockmap) {
+        for (auto I : bb->Instruction_list) {
+            if (I->GetOpcode() == BasicInstruction::CALL) {
+                auto callI = (CallInstruction *)I;
+                auto function_name = callI->GetFunctionName();
+                if (function_name != C->function_def->GetFunctionName()) {
+                    continue;
+                }
+                auto retbbid = GetRetBB(id);
+                if (retbbid == -1) {
+                    continue;
+                }
+                bb->Instruction_list.pop_back();
+                bb->InsertInstruction(1, new RetInstruction(BasicInstruction::VOID, nullptr));
+                break;
+            }
+        }
+    }
+}
+
+Operand InlinePass::InlineCFG(CFG *uCFG, CFG *vCFG, LLVMBlock StartBB, LLVMBlock EndBB, std::map<int, int> &reg_replace_map,
                   std::map<int, int> &label_replace_map) {
-    // return
     label_replace_map[0] = StartBB->block_id;
     for (auto [id, bb] : *vCFG->block_map) {
         if (id == 0 || bb->Instruction_list.empty()) {
@@ -79,8 +143,6 @@ Operand InlineCFG(CFG *uCFG, CFG *vCFG, LLVMBlock StartBB, LLVMBlock EndBB, std:
             }
             Instruction nowI;
             if (is_reinline) {
-                // if deal with self-inline, to better compare callintruction and lower down the space,
-                // take I as newI in uCFG
                 nowI = I;
             } else {
                 nowI = I->CopyInstruction();
@@ -127,7 +189,8 @@ Operand InlineCFG(CFG *uCFG, CFG *vCFG, LLVMBlock StartBB, LLVMBlock EndBB, std:
     }
     return nullptr;
 }
-void InlineCFG(CFG *uCFG, CFG *vCFG, uint32_t CallINo) {
+
+void InlinePass::InlineCFG(CFG *uCFG, CFG *vCFG, uint32_t CallINo) {
     std::map<int, int> reg_replace_map;
     std::map<int, int> label_replace_map;
     std::set<Instruction> EraseSet;
@@ -258,7 +321,8 @@ bool IsInlineBetter(CFG *uCFG, CFG *vCFG) {
     bool flag2 = fcallgraph.CGINum[uCFG] + fcallgraph.CGINum[vCFG] <= 200;
     return flag1 || flag2 || flag3;
 }
-CFG *CopyCFG(CFG *uCFG) {
+
+CFG *InlinePass::CopyCFG(CFG *uCFG) {
     CFG *vCFG = new CFG;
     auto max_label = uCFG->max_label;
     auto func_def = uCFG->function_def;
@@ -298,7 +362,8 @@ CFG *CopyCFG(CFG *uCFG) {
     fcallgraph.CGINum[vCFG] = fcallgraph.CGINum[uCFG];
     return vCFG;
 }
-void InlineDFS(CFG *uCFG) {
+
+void InlinePass::InlineDFS(CFG *uCFG) {
     if (CFGvis.find(uCFG) != CFGvis.end()) {
         return;
     }
@@ -353,55 +418,65 @@ void InlineDFS(CFG *uCFG) {
         is_reinline = false;
     }
 #endif
-
-    /*uCFG->BuildCFG();
-    DominatorTree DomTree;
-    DomTree.C = uCFG;
-    DomTree.BuildDominatorTree();
-    EliminateUnreachedBlocksInsts(uCFG);
-
-    for (auto [id, bb] : *uCFG->block_map) {
-        for (auto I : bb->Instruction_list) {
-            I->SetBlockID(id);
-        }
-    }*/
-
-    /*uCFG->BuildCFG();
-    uCFG->BuildDominatorTree();
-    SimplifyCFG(uCFG);
-    for (auto [id, bb] : *uCFG->block_map) {
-        for (auto I : bb->Instruction_list) {
-            I->SetBlockID(id);
-        }
-    }*/
 }
-void FunctionInline(LLVMIR *IR) {
-    // CFGvis.clear();
-    CFGvis.clear();
-    reinlinecallI.clear();
-    is_reinline = false;
-    InlineDFS(fcallgraph.MainCFG);
 
-    // 使用 DomAnalysis 和 SimplifyCFGPass 对 IR 中的所有函数（CFG）进行分析和优化
-    {
-        // 构建支配树（Dominator Tree）的分析
-        DomAnalysis domAnalysis(IR);
-        domAnalysis.Execute();
+void InlinePass::EliminateUselessFunction() {
+    std::set<std::string> CallStrSet;
 
-        // 简化 CFG
-        SimplifyCFGPass simplifyCFG(IR);
-        simplifyCFG.Execute();
-
-        // 对 IR 中的所有 CFG 的指令进行 BlockID 更新
-        for (auto &kv : CFGMap) {
-            auto cfg = kv.second;
-            for (auto [id, bb] : *(cfg->block_map)) {
-                for (auto I : bb->Instruction_list) {
-                    I->SetBlockID(id);
+    for (auto [defI, cfg] : llvmIR->llvm_cfg) {
+        for (auto [id, bb] : *(cfg->block_map)) {
+            for (auto I : bb->Instruction_list) {
+                if (I->GetOpcode() == BasicInstruction::CALL) {
+                    auto CallI = (CallInstruction *)I;
+                    CallStrSet.insert(CallI->GetFunctionName());
                 }
             }
         }
     }
 
-    // BuildCG();
+    std::set<FuncDefInstruction> EraseFuncDefSet;
+    for (auto [defI, cfg] : llvmIR->llvm_cfg) {
+        auto func_name = defI->GetFunctionName();
+        if (func_name == "main") {
+            continue;
+        }
+        if (CallStrSet.find(func_name) == CallStrSet.end()) {
+            EraseFuncDefSet.insert(defI);
+        }
+    }
+
+    for (auto I : EraseFuncDefSet) {
+        llvmIR->llvm_cfg.erase(I);
+        llvmIR->function_block_map.erase(I);
+    }
+}
+
+void InlinePass::Execute() {
+    CFGvis.clear();
+    reinlinecallI.clear();
+    is_reinline = false;
+
+    for (auto [defI, cfg] : llvmIR->llvm_cfg) {
+        RetMotion(cfg);
+        MakeFunctionOneExit(cfg);
+    }
+
+    InlineDFS(fcallgraph.MainCFG);
+
+    DomAnalysis domAnalysis(llvmIR);
+    domAnalysis.Execute();
+
+    SimplifyCFGPass simplifyCFG(llvmIR);
+    simplifyCFG.Execute();
+
+    for (auto& kv : CFGMap) {
+        auto cfg = kv.second;
+        for (auto [id, bb] : *(cfg->block_map)) {
+            for (auto I : bb->Instruction_list) {
+                I->SetBlockID(id);
+            }
+        }
+    }
+
+    EliminateUselessFunction();
 }

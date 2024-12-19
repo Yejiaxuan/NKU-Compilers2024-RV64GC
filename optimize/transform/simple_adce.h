@@ -3,6 +3,27 @@
 
 #include "../../include/ir.h"
 #include "../pass.h"
+#include "../analysis/dominator_tree.h"
+
+class ADCEPass : public IRPass {
+private:
+    DomAnalysis* domtrees;
+    std::vector<std::vector<LLVMBlock>> BuildCDG(CFG* C);
+    Instruction FindTerminal(CFG* C, int bbid);
+    void ADCE(CFG* C);
+    
+public:
+    ADCEPass(LLVMIR* IR, DomAnalysis* dom) : IRPass(IR) { domtrees = dom; }
+    void Execute();
+};
+
+#endif
+
+/*#ifndef SIMPLE_ADCE_H
+#define SIMPLE_ADCE_H
+
+#include "../../include/ir.h"
+#include "../pass.h"
 #include "dominator_tree.h"
 #include <set>
 #include <map>
@@ -29,4 +50,4 @@ public:
 };
 
 #endif // SIMPLE_ADCE_H
-
+*/

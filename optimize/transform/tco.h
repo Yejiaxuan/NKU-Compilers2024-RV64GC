@@ -3,19 +3,17 @@
 
 #include "../../include/ir.h"
 #include "../pass.h"
-#include <vector>
+#include <deque>
+#include <unordered_map>
 
 class TCOPass : public IRPass {
+private:    
+    bool TailRecursiveEliminateCheck(CFG* C);
+    void TailRecursiveEliminate(CFG* C);
+
 public:
-    TCOPass(LLVMIR *IR) : IRPass(IR) {}
-
-    void Execute();
-
-private:
-    void TailRecursionToLoop(CFG* cfg, FuncDefInstruction defI);
-    void ConvertTailRecursionToLoop(CFG* cfg, BasicBlock* block, CallInstruction* call_instr, FuncDefInstruction defI);
-    bool IsTailRecursiveCall(BasicBlock* block, FuncDefInstruction defI, CallInstruction*& call_instr);
-    void UpdatePhiNodes(CFG* cfg, FuncDefInstruction defI, BasicBlock* block, CallInstruction* call_instr);
+    TCOPass(LLVMIR* ir) : IRPass(ir) {}
+    void Execute() override;
 };
 
-#endif // TCO_H
+#endif

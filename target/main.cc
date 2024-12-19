@@ -49,12 +49,6 @@ extern char *yytext;
 extern std::vector<std::string> error_msgs;
 void PrintLexerResult(std::ostream &s, char *yytext, YYSTYPE yylval, int token);
 
-void FunctionInline(LLVMIR *IR);
-void MakeFunctionOneExit(CFG *C);
-void RetMotion(CFG *C);
-void EliminateUselessFunction(LLVMIR *IR);
-void TailRecursiveEliminate(CFG *C);
-
 /* 框架目前并没有对内存泄漏问题进行处理(例如没有编写语法树的析构函数)
    如果你只是想完成本学期的编译实验作业，可以忽略内存泄漏的问题，统一在编译结束后由操作系统帮忙回收
    如果你对自己有更高的要求或者对此感兴趣，可以尝试自己编写相关函数来解决内存泄漏问题
@@ -175,36 +169,21 @@ int main(int argc, char **argv) {
     optimize_flag = (argc == 6 && (strcmp(argv[optimize_tag], "-O1") == 0));
     if (optimize_flag) {
 
-        /*for (auto [defI, cfg] : llvmIR.llvm_cfg) {
-            RetMotion(cfg);
-        }
-
-        llvmIR.BuildCFG();
-
-        for (auto [defI, cfg] : llvmIR.llvm_cfg) {
-            TailRecursiveEliminate(cfg);
-        }
-
-        for (auto [defI, cfg] : llvmIR.llvm_cfg) {
-            MakeFunctionOneExit(cfg);
-        }
+        TCOPass(&llvmIR).Execute();
 
         llvmIR.BuildFunctionInfo();
 
-        //FunctionInline(&llvmIR);
-
-        EliminateUselessFunction(&llvmIR);*/
-
-        //TCOPass(&llvmIR).Execute(); //会报runtime error
+        InlinePass(&llvmIR).Execute();
 
         DomAnalysis dom(&llvmIR);
         
         dom.Execute();   // 完成支配树建立后，取消该行代码的注释
+        
         (Mem2RegPass(&llvmIR, &dom)).Execute();
         
-        //SimpleDCEPass(&llvmIR).Execute();
+        SimpleDCEPass(&llvmIR).Execute();
 
-	//ADCEPass(&llvmIR, &dom).Execute();
+	    ADCEPass(&llvmIR, &dom).Execute();
 
 
         // TODO: add more passes
@@ -239,5 +218,3 @@ int main(int argc, char **argv) {
     fout.close();
     return 0;
 }
-
-
