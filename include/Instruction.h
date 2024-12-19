@@ -342,7 +342,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(pointer==oldO){
             pointer=newO;
         }
@@ -380,7 +380,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return nullptr; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(pointer==oldO){
             pointer=newO;
         }
@@ -440,7 +440,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(op1==oldO){
             op1=newO;
         }
@@ -485,7 +485,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(op1==oldO){
             op1=newO;
         }
@@ -527,7 +527,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(op1==oldO){
             op1=newO;
         }
@@ -568,7 +568,7 @@ public:
     virtual Instruction CopyInstruction();
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         for (auto &pair : phi_list) {
             if (pair.first==oldO) pair.first=newO;  // value
             if (pair.second==oldO) pair.second=newO; // label
@@ -638,7 +638,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(cond==oldO){
             cond=newO;
         }
@@ -701,7 +701,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(init_val==oldO){
             init_val=newO;
         }
@@ -785,7 +785,7 @@ public:
     Operand DefinesResult(){
         return result;
     }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         for (auto &[type, operand] : args) {
             if(operand==oldO){
                 operand=newO;
@@ -827,7 +827,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return nullptr; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(ret_val==oldO){
             ret_val=newO;
         }
@@ -885,7 +885,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(ptrval==oldO){
             ptrval=newO;
         }
@@ -980,7 +980,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(value==oldO){
             value=newO;
         }
@@ -1010,7 +1010,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(value==oldO){
             value=newO;
         }
@@ -1041,7 +1041,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
-    void resetOperand(Operand oldO,Operand newO) override {
+    void resetOperand(Operand oldO,Operand newO)  {
         if(value==oldO){
             value=newO;
         }
