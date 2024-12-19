@@ -1,4 +1,4 @@
-// Reference: https://github.com/yuhuifishash/SysY/blob/master/optimize/function/function_basicinfo.cc line2-line98
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/optimize/function/function_basicinfo.cc line1-line97
 #include "function_basicinfo.h"
 #include "../../include/ir.h"
 
