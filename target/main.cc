@@ -7,6 +7,7 @@
 #include "../optimize/transform/simple_dce.h"
 #include "../optimize/transform/inline.h"
 #include "../optimize/transform/simple_adce.h"
+#include "../optimize/transform/tco.h"
 
 #include "../optimize/analysis/dominator_tree.h"
 
@@ -161,12 +162,15 @@ int main(int argc, char **argv) {
     // (例如在执行完SimplifyCFG后，需要保证控制流图依旧是正确的)
 
     // 当你完成消除不可达基本块和指令后，将下面注释取消
-     SimplifyCFGPass(&llvmIR).Execute();
+    SimplifyCFGPass(&llvmIR).Execute();
 
     // 消除不可达基本块和指令在不开启O1的情况也需要进行，原因是这属于基本优化
 
     optimize_flag = (argc == 6 && (strcmp(argv[optimize_tag], "-O1") == 0));
     if (optimize_flag) {
+
+        TCOPass(&llvmIR).Execute();
+        
         DomAnalysis dom(&llvmIR);
         
         dom.Execute();   // 完成支配树建立后，取消该行代码的注释
@@ -174,7 +178,9 @@ int main(int argc, char **argv) {
         
         SimpleDCEPass(&llvmIR).Execute();
 
-	ADCEPass(&llvmIR, &dom).Execute();
+	    ADCEPass(&llvmIR, &dom).Execute();
+
+        
         //InlinePass(&llvmIR).Execute();
 
         // TODO: add more passes

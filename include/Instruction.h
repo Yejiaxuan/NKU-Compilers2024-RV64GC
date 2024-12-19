@@ -312,6 +312,7 @@ public:
     virtual int GetResultRegNo() = 0;
     virtual std::vector<int> GetUsedRegisters() = 0;
     virtual Operand GetResultReg() = 0;
+    virtual void resetOperand(Operand oldO,Operand newO){return;}
 };
 
 // load
@@ -341,6 +342,12 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(pointer==oldO){
+            pointer=newO;
+        }
+        return;
+    }
     
 };
 
@@ -373,6 +380,15 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return nullptr; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(pointer==oldO){
+            pointer=newO;
+        }
+        if(value==oldO){
+            value=newO;
+        }
+        return;
+    }
 };
 
 //<result>=add <ty> <op1>,<op2>
@@ -424,6 +440,15 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(op1==oldO){
+            op1=newO;
+        }
+        if(op2==oldO){
+            op2=newO;
+        }
+        return;
+    }
 };
 
 //<result>=icmp <cond> <ty> <op1>,<op2>
@@ -460,6 +485,15 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(op1==oldO){
+            op1=newO;
+        }
+        if(op2==oldO){
+            op2=newO;
+        }
+        return;
+    }
 };
 
 //<result>=fcmp <cond> <ty> <op1>,<op2>
@@ -493,6 +527,15 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(op1==oldO){
+            op1=newO;
+        }
+        if(op2==oldO){
+            op2=newO;
+        }
+        return;
+    }
 };
 
 // phi syntax:
@@ -525,6 +568,13 @@ public:
     virtual Instruction CopyInstruction();
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
+    void resetOperand(Operand oldO,Operand newO) override {
+        for (auto &pair : phi_list) {
+            if (pair.first==oldO) pair.first=newO;  // value
+            if (pair.second==oldO) pair.second=newO; // label
+        }
+        return;
+    }
 };
 
 // alloca
@@ -588,6 +638,12 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(cond==oldO){
+            cond=newO;
+        }
+        return;
+    }
 };
 
 // Unconditional branch
@@ -645,6 +701,12 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(init_val==oldO){
+            init_val=newO;
+        }
+        return;
+    }
 };
 
 class GlobalStringConstInstruction : public BasicInstruction {
@@ -720,6 +782,17 @@ public:
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
     virtual LLVMType GetResultType() { return ret_type; }
+    Operand DefinesResult(){
+        return result;
+    }
+    void resetOperand(Operand oldO,Operand newO) override {
+        for (auto &[type, operand] : args) {
+            if(operand==oldO){
+                operand=newO;
+            }
+        }
+        return;
+    }
 };
 
 /*
@@ -754,6 +827,12 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return nullptr; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(ret_val==oldO){
+            ret_val=newO;
+        }
+        return;
+    }
 };
 
 /*
@@ -806,6 +885,17 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(ptrval==oldO){
+            ptrval=newO;
+        }
+        for (auto &idx : indexes) {
+            if(idx==oldO){
+                idx=newO;
+            }
+        }
+        return;
+    }
 };
 
 class FunctionDefineInstruction : public BasicInstruction {
@@ -816,6 +906,9 @@ private:
 public:
     std::vector<enum LLVMType> formals;
     std::vector<Operand> formals_reg;
+    bool isTCO = false;
+    std::vector<std::vector<std::pair<Operand, Operand>>> phi_list_list;
+    std::vector<Operand> phi_result_list;
     FunctionDefineInstruction(enum LLVMType t, std::string n) {
         return_type = t;
         Func_name = n;
@@ -845,6 +938,9 @@ private:
 
 public:
     std::vector<enum LLVMType> formals;
+    bool isTCO = false;
+    std::vector<std::vector<std::pair<Operand, Operand>>> phi_list_list;
+    std::vector<Operand> phi_result_list;
     FunctionDeclareInstruction(enum LLVMType t, std::string n) {
         return_type = t;
         Func_name = n;
@@ -884,6 +980,12 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(value==oldO){
+            value=newO;
+        }
+        return;
+    }
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -908,6 +1010,12 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(value==oldO){
+            value=newO;
+        }
+        return;
+    }
 };
 
 // 无符号扩展，你大概率需要它来将i1无符号扩展至i32(即对应c语言bool类型转int)
@@ -933,6 +1041,12 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void resetOperand(Operand oldO,Operand newO) override {
+        if(value==oldO){
+            value=newO;
+        }
+        return;
+    }
 };
 
 std::ostream &operator<<(std::ostream &s, BasicInstruction::LLVMType type);
