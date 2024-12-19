@@ -900,3 +900,67 @@ void BrUncondInstruction::ReplaceLabelByMap(const std::map<int, int> &Rule) {
         destLabel = GetNewLabelOperand(Rule.find(dest_label->GetLabelNo())->second);
     }
 }
+
+void LoadInstruction::SetNonResultOperands(std::vector<Operand> ops) { pointer = ops[0]; }
+
+void StoreInstruction::SetNonResultOperands(std::vector<Operand> ops) {
+    pointer = ops[0];
+    value = ops[1];
+}
+
+void ArithmeticInstruction::SetNonResultOperands(std::vector<Operand> ops) {
+    op1 = ops[0];
+    op2 = ops[1];
+    if (ops.size() == 3) {
+        op3 = ops[2];
+    }
+}
+
+void IcmpInstruction::SetNonResultOperands(std::vector<Operand> ops) {
+    op1 = ops[0];
+    op2 = ops[1];
+}
+
+void FcmpInstruction::SetNonResultOperands(std::vector<Operand> ops) {
+    op1 = ops[0];
+    op2 = ops[1];
+}
+
+void PhiInstruction::SetNonResultOperands(std::vector<Operand> ops) {
+    int i = 0;
+    for (auto &label_val_pair : phi_list) {
+        label_val_pair.second = ops[i];
+        i++;
+    }
+}
+
+void BrCondInstruction::SetNonResultOperands(std::vector<Operand> ops) { cond = ops[0]; }
+
+void CallInstruction::SetNonResultOperands(std::vector<Operand> ops) {
+    int i = 0;
+    for (auto &arg_pair : args) {
+        arg_pair.second = ops[i];
+        i++;
+    }
+}
+
+void RetInstruction::SetNonResultOperands(std::vector<Operand> ops) {
+    if (ops.empty()) {
+        ret_val = NULL;
+    } else {
+        ret_val = ops[0];
+    }
+}
+
+void GetElementptrInstruction::SetNonResultOperands(std::vector<Operand> ops) {
+    indexes = ops;
+    indexes.pop_back();
+    ptrval = ops[ops.size() - 1];
+}
+
+void FptosiInstruction::SetNonResultOperands(std::vector<Operand> ops) { value = ops[0]; }
+
+void SitofpInstruction::SetNonResultOperands(std::vector<Operand> ops) { value = ops[0]; }
+
+void ZextInstruction::SetNonResultOperands(std::vector<Operand> ops) { value = ops[0]; }
+

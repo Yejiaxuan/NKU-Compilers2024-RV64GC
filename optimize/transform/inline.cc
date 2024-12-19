@@ -1,305 +1,407 @@
+#include "../../include/ir.h"
+#include "function_basicinfo.h"
 #include "inline.h"
-#include <stack>
-#include <set>
-#include <map>
-#include <algorithm>
+#include "simplify_cfg.h"
+#include "../analysis/dominator_tree.h"
 #include <iostream>
 
+
 extern std::map<std::string, CFG *> CFGMap;
+extern FunctionCallGraph fcallgraph;
+// extern std::unordered_map<CFG *, std::unordered_map<CFG *,std::vector<Instruction>>> fcallgraph.CGCallI;
+// extern std::unordered_map<CFG *,size_t> fcallgraph.CGINum;
+static std::unordered_map<CFG *, bool> CFGvis;
+static std::unordered_map<Instruction, bool> reinlinecallI;
+static bool is_reinline = false;
 
-bool InlinePass::CanInlineFunction(FuncDefInstruction funcDef, int caller_instr_count) {
-    std::string funcName = funcDef->GetFunctionName();
-    CFG* cfg = CFGMap[funcName];
+// we process function call in bottom-up order(CallGraphSCC)
+// in SysY2022, the SCC's size <= 1, so we only need to consider self-recursive
+// after each iterations, we need to use SCCP, SimplifyCFG to optimize the cfg
+/*
+    InlineDFS(CFG* now) {
 
-    // 统计被调函数的指令数
-    int callee_instr_count = 0;
-    for (auto &[id, bb] : *cfg->block_map) {
-        callee_instr_count += (int)bb->Instruction_list.size();
-    }
+        for(auto v: CG->GetSuccessor(now)) {
 
-    // 检查被调函数是否是自递归(条件3相关)
-    bool is_recursive = false;
-    for (auto &[id, bb] : *cfg->block_map) {
-        for (auto inst : bb->Instruction_list) {
-            if (inst->GetOpcode() == BasicInstruction::CALL) {
-                auto callInst = (CallInstruction *)inst;
-                if (callInst->GetFunctionName() == funcName) {
-                    is_recursive = true;
-                    break;
+            if(v == now){ // now has self-recursive
+                continue;
+            }
+
+            InlineDFS(v);
+
+            if(v is self-recursive) { // do not inline
+                continue;
+            }
+
+            for(auto t : call v in now){ //other situations
+                if(inline t is better) {
+                    inline t -> now;
+                }
+            }
+
+        }
+        if(exist self-recursive){ // now has self-recursive
+            while(inline self is better){
+                for(auto t : call self in now){
+                    if(inline self is better){
+                        inline t -> now
+                    }
                 }
             }
         }
-        if (is_recursive) break;
+
+        BuildCFG;
+        BuildDomTree;
+        SCCP(now);
+        SimplifyCFG(now);
+    }
+*/
+
+Operand InlineCFG(CFG *uCFG, CFG *vCFG, LLVMBlock StartBB, LLVMBlock EndBB, std::map<int, int> &reg_replace_map,
+                  std::map<int, int> &label_replace_map) {
+    // return
+    label_replace_map[0] = StartBB->block_id;
+    for (auto [id, bb] : *vCFG->block_map) {
+        if (id == 0 || bb->Instruction_list.empty()) {
+            continue;
+        }
+        auto newbb = uCFG->NewBlock();
+        label_replace_map[bb->block_id] = newbb->block_id;
     }
 
-    // 检查函数参数是否包含指针类型
-    bool has_pointer_arg = false;
-    for (auto t : funcDef->formals) {
-        if (t == BasicInstruction::PTR) {
-            has_pointer_arg = true;
+    for (auto [id, bb] : *vCFG->block_map) {
+        auto nowbb_id = label_replace_map[id];
+        auto nowbb = (*uCFG->block_map)[nowbb_id];
+        for (auto I : bb->Instruction_list) {
+            if (I->GetOpcode() == BasicInstruction::RET) {
+                auto newI = new BrUncondInstruction(GetNewLabelOperand(EndBB->block_id));
+                nowbb->InsertInstruction(1, newI);
+                continue;
+            }
+            Instruction nowI;
+            if (is_reinline) {
+                // if deal with self-inline, to better compare callintruction and lower down the space,
+                // take I as newI in uCFG
+                nowI = I;
+            } else {
+                nowI = I->CopyInstruction();
+            }
+            nowI->ReplaceLabelByMap(label_replace_map);
+            auto use_ops = nowI->GetNonResultOperands();
+            for (auto &op : use_ops) {
+                if (op->GetOperandType() != BasicOperand::REG) {
+                    continue;
+                }
+                auto RegOp = (RegOperand *)op;
+                auto RegNo = RegOp->GetRegNo();
+                if (reg_replace_map.find(RegNo) == reg_replace_map.end()) {
+                    auto newNo = ++uCFG->max_reg;
+                    op = GetNewRegOperand(newNo);
+                    reg_replace_map[RegNo] = newNo;
+                }
+            }
+
+            auto ResultReg = (RegOperand *)nowI->GetResultReg();
+
+            if (ResultReg != NULL && reg_replace_map.find(ResultReg->GetRegNo()) == reg_replace_map.end()) {
+                auto ResultRegNo = ResultReg->GetRegNo();
+                int newNo = ++uCFG->max_reg;
+                auto newReg = GetNewRegOperand(newNo);
+                reg_replace_map[ResultRegNo] = newNo;
+            }
+
+            nowI->ReplaceRegByMap(reg_replace_map);
+            nowbb->InsertInstruction(1, nowI);
+            nowI->SetBlockID(nowbb_id);
+        }
+    }
+    auto retBB = (BasicBlock *)vCFG->ret_block;
+    auto RetI = (RetInstruction *)retBB->Instruction_list.back();
+    auto RetResult = RetI->GetRetVal();
+
+    if (RetResult != NULL) {
+        if (RetResult->GetOperandType() == BasicOperand::REG) {
+            auto oldRegNo = ((RegOperand *)RetResult)->GetRegNo();
+            return GetNewRegOperand(reg_replace_map[oldRegNo]);
+        }
+        return RetResult;
+    }
+    return nullptr;
+}
+void InlineCFG(CFG *uCFG, CFG *vCFG, uint32_t CallINo) {
+    std::map<int, int> reg_replace_map;
+    std::map<int, int> label_replace_map;
+    std::set<Instruction> EraseSet;
+    auto StartBB = uCFG->NewBlock();
+    auto EndBB = uCFG->NewBlock();
+    auto StartBB_id = StartBB->block_id;
+    auto EndBB_id = EndBB->block_id;
+    int formal_regno = -1;
+    auto CallI = (CallInstruction *)fcallgraph.CGCallI[uCFG][vCFG][CallINo];
+    auto BlockMap = *uCFG->block_map;
+    auto uCFG_BBid = CallI->GetBlockID();
+    auto oldbb = BlockMap[uCFG_BBid];
+
+    for (auto formal : CallI->GetParameterList()) {
+        ++formal_regno;
+        if (formal.second->GetOperandType() == BasicOperand::IMMI32) {
+            std::stack<Instruction> PhiISta;
+            while (oldbb->Instruction_list.front()->GetOpcode() == BasicInstruction::PHI) {
+                PhiISta.push(oldbb->Instruction_list.front());
+                oldbb->Instruction_list.pop_front();
+            }
+            auto newAddReg = GetNewRegOperand(++uCFG->max_reg);
+            oldbb->InsertInstruction(
+            0, new ArithmeticInstruction(BasicInstruction::ADD, BasicInstruction::I32, formal.second, new ImmI32Operand(0), newAddReg));
+            while (!PhiISta.empty()) {
+                oldbb->InsertInstruction(0, PhiISta.top());
+                PhiISta.pop();
+            }
+            reg_replace_map[formal_regno] = newAddReg->GetRegNo();
+            fcallgraph.CGINum[uCFG]++;
+        } else if (formal.second->GetOperandType() == BasicOperand::IMMF32) {
+            std::stack<Instruction> PhiISta;
+            while (oldbb->Instruction_list.front()->GetOpcode() == BasicInstruction::PHI) {
+                PhiISta.push(oldbb->Instruction_list.front());
+                oldbb->Instruction_list.pop_front();
+            }
+            auto newAddReg = GetNewRegOperand(++uCFG->max_reg);
+            oldbb->InsertInstruction(
+            0, new ArithmeticInstruction(BasicInstruction::FADD, BasicInstruction::FLOAT32, formal.second, new ImmF32Operand(0), newAddReg));
+            while (!PhiISta.empty()) {
+                oldbb->InsertInstruction(0, PhiISta.top());
+                PhiISta.pop();
+            }
+            reg_replace_map[formal_regno] = newAddReg->GetRegNo();
+            fcallgraph.CGINum[uCFG]++;
+        } else {
+            reg_replace_map[formal_regno] = ((RegOperand *)formal.second)->GetRegNo();
+        }
+    }
+
+    Operand NewResultOperand = InlineCFG(uCFG, vCFG, StartBB, EndBB, reg_replace_map, label_replace_map);
+
+    auto vfirstlabelno = label_replace_map[0];
+    auto uAllocaBB = (BasicBlock *)BlockMap[vfirstlabelno];
+    for (auto I : uAllocaBB->Instruction_list) {
+        if (I->GetOpcode() != BasicInstruction::ALLOCA) {
+            continue;
+        }
+        BlockMap[0]->InsertInstruction(0, I);
+        EraseSet.insert(I);
+    }
+
+    auto tmp_Instruction_list = uAllocaBB->Instruction_list;
+    uAllocaBB->Instruction_list.clear();
+    for (auto I : tmp_Instruction_list) {
+        if (EraseSet.find(I) != EraseSet.end()) {
+            continue;
+        }
+        uAllocaBB->InsertInstruction(1, I);
+    }
+    EraseSet.clear();
+    if (CallI->GetRetType() != BasicInstruction::VOID) {
+        if (CallI->GetResultType() == BasicInstruction::I32) {
+            EndBB->InsertInstruction(1, new ArithmeticInstruction(BasicInstruction::ADD, BasicInstruction::I32, (ImmI32Operand *)NewResultOperand,
+                                                                  new ImmI32Operand(0), CallI->GetResultReg()));
+        } else {
+            EndBB->InsertInstruction(1, new ArithmeticInstruction(BasicInstruction::FADD, BasicInstruction::FLOAT32, (ImmF32Operand *)NewResultOperand,
+                                                                  new ImmF32Operand(0), CallI->GetResultReg()));
+        }
+        fcallgraph.CGINum[uCFG]++;
+    }
+
+    auto StartBB_label = GetNewLabelOperand(StartBB_id);
+    BrUncondInstruction *newBrI;
+    auto oldbb_it = oldbb->Instruction_list.begin();
+    bool EndbbBegin = false;
+    for (auto it = oldbb->Instruction_list.begin(); it != oldbb->Instruction_list.end(); ++it) {
+        auto I = *it;
+        if (!EndbbBegin && I == CallI) {
+            EndbbBegin = true;
+            newBrI = new BrUncondInstruction(StartBB_label);
+            newBrI->SetBlockID(oldbb->block_id);
+            oldbb_it = it;
+        } else if (EndbbBegin) {
+            I->SetBlockID(EndBB_id);
+            EndBB->InsertInstruction(1, I);
+        }
+    }
+    while (oldbb_it != oldbb->Instruction_list.end()) {
+        oldbb->Instruction_list.pop_back();
+    }
+    oldbb->InsertInstruction(1, newBrI);
+    label_replace_map.clear();
+    label_replace_map[oldbb->block_id] = EndBB->block_id;
+    for (auto nextBB : uCFG->G[uCFG_BBid]) {
+        for (auto I : nextBB->Instruction_list) {
+            if (I->GetOpcode() != BasicInstruction::PHI) {
+                continue;
+            }
+            auto PhiI = (PhiInstruction *)I;
+            PhiI->ReplaceLabelByMap(label_replace_map);
+        }
+    }
+    label_replace_map.clear();
+}
+
+bool IsInlineBetter(CFG *uCFG, CFG *vCFG) {
+    bool flag3 = false;
+    auto vFuncdef = vCFG->function_def->formals;
+    for (auto type : vFuncdef) {
+        if (type == BasicInstruction::PTR) {
+            flag3 = true;
             break;
         }
     }
-
-    // 内联条件(满足任意即可)：
-    // 1. 被调函数指令数 <= 30
-    // 2. 内联后总指令数（caller指令数 + callee指令数） <= 200
-    // 3. 函数参数包含指针且非自递归
-    bool cond1 = (callee_instr_count <= 30);
-    bool cond2 = ((caller_instr_count + callee_instr_count) <= 200);
-    bool cond3 = (has_pointer_arg && !is_recursive);
-
-    if (cond1 || cond2 || cond3) {
-        return true;
-    } else {
-        return false;
-    }
+    flag3 &= uCFG != vCFG;
+    bool flag1 = fcallgraph.CGINum[vCFG] <= 30;
+    bool flag2 = fcallgraph.CGINum[uCFG] + fcallgraph.CGINum[vCFG] <= 200;
+    return flag1 || flag2 || flag3;
 }
-
-int RecalculateCallerInstrCount(CFG* cfg) {
-    int count = 0;
-    for (auto &bb_pair : *cfg->block_map) {
-        BasicBlock *block = bb_pair.second;
-        count += (int)block->Instruction_list.size();
-    }
-    return count;
-}
-
-void InlinePass::InlineFunctionCall(CFG *callerCFG, BasicBlock *callerBlock,
-                                    CallInstruction *callInst,
-                                    FuncDefInstruction calleeFunc) {
-    std::string calleeName = calleeFunc->GetFunctionName();
-    CFG* calleeCFG = CFGMap[calleeName];
-    auto &calleeBlockMap = *calleeCFG->block_map;
-
-    // 原调用指令的返回值寄存器(可能为NULL，如果返回类型为void)
-    Operand callResult = callInst->GetResult();
-
-    // 函数参数
-    std::vector<std::pair<BasicInstruction::LLVMType, Operand>> callArgs = callInst->GetParameterList();
-
-    // 被调用函数的形式参数与类型
-    std::vector<enum BasicInstruction::LLVMType> formalTypes = calleeFunc->formals;
-    std::vector<Operand> formalRegs = calleeFunc->formals_reg;
-
-    // 为被调函数的基本块创建新块id
-    std::map<int, int> oldToNewBlockID;
-    std::map<int, LLVMBlock> newBlocks;
-
-    // 为每个callee的基本块创建对应的新基本块
-    for (auto &bb_pair : calleeBlockMap) {
-        int old_id = bb_pair.first;
-        BasicBlock *old_bb = bb_pair.second;
-        int new_id = (int)callerCFG->G.size();
-        callerCFG->G.resize(new_id+1);
-        callerCFG->invG.resize(new_id+1);
-        oldToNewBlockID[old_id] = new_id;
-
-        // 利用NewBlock函数创建新块
-        LLVMBlock new_bb = llvmIR->NewBlock(callerCFG->function_def, new_id);
-        newBlocks[new_id] = new_bb;
-
-        // 拷贝指令
-        for (auto inst : old_bb->Instruction_list) {
-            Instruction newInst = inst->CopyInstruction();
-            new_bb->Instruction_list.push_back(newInst);
+CFG *CopyCFG(CFG *uCFG) {
+    CFG *vCFG = new CFG;
+    auto max_label = uCFG->max_label;
+    auto func_def = uCFG->function_def;
+    auto newFuncDef = new FunctionDefineInstruction(func_def->GetReturnType(), ".....CopyInlineFunc");
+    vCFG->function_def = newFuncDef;
+    vCFG->block_map = new std::map<int, LLVMBlock>;
+    vCFG->max_label = -1;
+    int lastid = -1;
+    for (auto [id, bb] : *uCFG->block_map) {
+        LLVMBlock new_block;
+        while (id != lastid) {
+            lastid++;
+            new_block = vCFG->NewBlock();
         }
-    }
-
-    // 构建reg映射用于参数替换（假设参数一定是reg或立即数）
-    std::map<int,int> regMap;
-    // 对参数进行简单映射，如果实参为寄存器，直接映射寄存器号
-    for (size_t i = 0; i < formalRegs.size(); i++) {
-        Operand formalReg = formalRegs[i];
-        Operand actualArg = callArgs[i].second;
-        if (formalReg && formalReg->GetOperandType() == BasicOperand::REG) {
-            int oldReg = ((RegOperand*)formalReg)->GetRegNo();
-            if (actualArg && actualArg->GetOperandType() == BasicOperand::REG) {
-                int actualReg = ((RegOperand*)actualArg)->GetRegNo();
-                regMap[oldReg] = actualReg;
-            } else {
-                // 如果是立即数或其他非reg operand，没有直接映射
-                // 后续可根据需要对指令中出现的oldReg手动替换为actualArg
-                // 简化处理，不实现复杂逻辑，只进行reg->reg映射
+        lastid = id;
+        for (auto I : bb->Instruction_list) {
+            auto newI = I->CopyInstruction();
+            new_block->InsertInstruction(1, newI);
+            newI->SetBlockID(id);
+            if (newI->GetOpcode() == BasicInstruction::RET) {
+                vCFG->ret_block = new_block;
             }
-        }
-    }
-
-    // 使用ReplaceRegByMap对内联后的指令进行参数替换(仅限reg->reg)
-    for (auto &bb_pair : newBlocks) {
-        auto block = bb_pair.second;
-        for (auto inst : block->Instruction_list) {
-            inst->ReplaceRegByMap(regMap);
-            // 若有立即数实参需要替换，可在此对inst进行类型判断和手动SetOperand。
-            // 这里省略复杂场景的处理。
-        }
-    }
-
-    // 分裂callerBlock，处理call指令后继
-    BasicBlock *newSuccessorBlock = nullptr;
-    {
-        int new_caller_block_id = (int)callerCFG->G.size();
-        callerCFG->G.resize(new_caller_block_id+1);
-        callerCFG->invG.resize(new_caller_block_id+1);
-        newSuccessorBlock = llvmIR->NewBlock(callerCFG->function_def, new_caller_block_id);
-
-        // 将callInst后的指令移动到newSuccessorBlock
-        auto &inst_list = callerBlock->Instruction_list;
-        auto pos = std::find(inst_list.begin(), inst_list.end(), (Instruction)callInst);
-        if (pos != inst_list.end()) {
-            ++pos; 
-            for (; pos != inst_list.end();) {
-                newSuccessorBlock->Instruction_list.push_back(*pos);
-                pos = inst_list.erase(pos);
-            }
-        }
-
-        // 删除callInst本身前，需要先插入跳转到callee入口块
-        int callee_entry_id = 0;
-        if (!oldToNewBlockID.empty()) {
-            callee_entry_id = oldToNewBlockID[0];
-        }
-        Operand entryLabel = GetNewLabelOperand(callee_entry_id);
-        Instruction brToInline = new BrUncondInstruction(entryLabel);
-        callerBlock->Instruction_list.push_back(brToInline);
-
-        // CFG更新：callerBlock -> callee_entry_block
-        callerCFG->G[callerBlock->block_id].push_back(newBlocks[callee_entry_id]);
-        callerCFG->invG[callee_entry_id].push_back(callerBlock);
-    }
-
-    // 修改内联函数返回点的RET指令
-    for (auto &bb_pair : newBlocks) {
-        auto block = bb_pair.second;
-        for (size_t i = 0; i < block->Instruction_list.size(); i++) {
-            Instruction inst = block->Instruction_list[i];
-            if (inst->GetOpcode() == BasicInstruction::RET) {
-                RetInstruction *retInst = (RetInstruction *)inst;
-                Operand retVal = retInst->GetRetVal();
-
-                // 用一条跳转替换ret
-                // 如果有返回值，将它赋给callResult对应的reg（如有MOVE指令可用这里）
-                if (callResult != nullptr && retVal != nullptr) {
-                    // 为演示用Zext代替move：zext callResult = retVal
-                    Instruction fakeInst = new ZextInstruction(BasicInstruction::I32, callResult, BasicInstruction::I32, retVal);
-                    block->Instruction_list[i] = fakeInst;
-                    // 在fakeInst后插入跳转newSuccessorBlock
-                    Operand succLabel = GetNewLabelOperand(newSuccessorBlock->block_id);
-                    Instruction brToSucc = new BrUncondInstruction(succLabel);
-                    block->Instruction_list.insert(block->Instruction_list.begin() + i + 1, brToSucc);
-                } else {
-                    // 无返回值或void返回
-                    Operand succLabel = GetNewLabelOperand(newSuccessorBlock->block_id);
-                    Instruction brToSucc = new BrUncondInstruction(succLabel);
-                    block->Instruction_list[i] = brToSucc;
+            if (newI->GetOpcode() == BasicInstruction::CALL &&
+                CFGMap.find(((CallInstruction *)newI)->GetFunctionName()) != CFGMap.end()) {
+                auto CallI = (CallInstruction *)newI;
+                if (CallI->GetFunctionName() == uCFG->function_def->GetFunctionName()) {
+                    fcallgraph.CGNum[uCFG][uCFG]++;
+                    reinlinecallI[CallI] = true;
+                    fcallgraph.CGCallI[uCFG][uCFG].push_back(CallI);
                 }
+            }
+        }
+    }
+    vCFG->max_reg = uCFG->max_reg;
+    fcallgraph.CG[uCFG].push_back(vCFG);
+    fcallgraph.CGNum[uCFG][vCFG] = 1;
+    fcallgraph.CGINum[vCFG] = fcallgraph.CGINum[uCFG];
+    return vCFG;
+}
+void InlineDFS(CFG *uCFG) {
+    if (CFGvis.find(uCFG) != CFGvis.end()) {
+        return;
+    }
+    CFGvis[uCFG] = true;
 
-                // 处理完ret后跳出循环
+    for (auto vCFG : fcallgraph.CG[uCFG]) {
+        if (uCFG == vCFG) {
+            continue;
+        }
+        InlineDFS(vCFG);
+        if (fcallgraph.CG.find(vCFG) == fcallgraph.CG.end() ||
+            fcallgraph.CGNum[vCFG].find(vCFG) != fcallgraph.CGNum[vCFG].end()) {
+            continue;
+        }
+        auto map_size = fcallgraph.CGNum[uCFG][vCFG];
+        for (uint32_t i = 0; i < map_size; ++i) {
+            if (!IsInlineBetter(uCFG, vCFG)) {
                 break;
             }
+            InlineCFG(uCFG, vCFG, i);
+            fcallgraph.CGINum[uCFG] += fcallgraph.CGINum[vCFG];
+            uCFG->BuildCFG();
         }
     }
 
-    // 删除callInst
-    {
-        auto &inst_list = callerBlock->Instruction_list;
-        auto pos = std::find(inst_list.begin(), inst_list.end(), (Instruction)callInst);
-        if (pos != inst_list.end()) {
-            inst_list.erase(pos);
-        }
-    }
+#ifdef O3_ENABLE
+    if (fcallgraph.CG.find(uCFG) != fcallgraph.CG.end() &&
+        fcallgraph.CGNum[uCFG].find(uCFG) != fcallgraph.CGNum[uCFG].end()) {
+        int i = 0;
+        while (IsInlineBetter(uCFG, uCFG)) {
+            is_reinline = true;
+            auto vCFG = CopyCFG(uCFG);
+            auto oldI = (CallInstruction *)fcallgraph.CGCallI[uCFG][uCFG][i];
+            auto CallI = (CallInstruction *)oldI->CopyInstruction();
+            CallI->SetFunctionName(vCFG->function_def->GetFunctionName());
+            CallI->SetBlockID(oldI->GetBlockID());
+            fcallgraph.CGCallI[uCFG][uCFG][i] = CallI;
+            oldI->SetFunctionName(vCFG->function_def->GetFunctionName());
+            auto block_map = uCFG->block_map;
+            auto oldbb = (*block_map)[oldI->GetBlockID()];
+            fcallgraph.CGCallI[uCFG][vCFG].push_back(oldI);
 
-    // 更新内联后的CFG边信息
-    for (auto &bb_pair : newBlocks) {
-        int new_id = bb_pair.first;
-        BasicBlock *block = bb_pair.second;
-        if (!block->Instruction_list.empty()) {
-            Instruction last = block->Instruction_list.back();
-            if (last->GetOpcode() == BasicInstruction::BR_COND) {
-                BrCondInstruction *brc = (BrCondInstruction *)last;
-                int t_id = ((LabelOperand*)brc->GetTrueLabel())->GetLabelNo();
-                int f_id = ((LabelOperand*)brc->GetFalseLabel())->GetLabelNo();
-                callerCFG->G[new_id].push_back(newBlocks[t_id]);
-                callerCFG->invG[t_id].push_back(newBlocks[new_id]);
-                callerCFG->G[new_id].push_back(newBlocks[f_id]);
-                callerCFG->invG[f_id].push_back(newBlocks[new_id]);
-            } else if (last->GetOpcode() == BasicInstruction::BR_UNCOND) {
-                BrUncondInstruction *bru = (BrUncondInstruction *)last;
-                int d_id = ((LabelOperand*)bru->GetDestLabel())->GetLabelNo();
-                if (newBlocks.find(d_id) != newBlocks.end()) {
-                    callerCFG->G[new_id].push_back(newBlocks[d_id]);
-                    callerCFG->invG[d_id].push_back(newBlocks[new_id]);
-                } else if (d_id == newSuccessorBlock->block_id) {
-                    callerCFG->G[new_id].push_back(newSuccessorBlock);
-                    callerCFG->invG[newSuccessorBlock->block_id].push_back(newBlocks[new_id]);
-                }
-            }
-            // RET已转为BR_UNCOND形式处理，不需额外操作
-        }
-    }
+            InlineCFG(uCFG, vCFG, 0);
 
-    // newSuccessorBlock的前驱已经添加（在RET和BR中已处理）
+            fcallgraph.CGINum[uCFG] += fcallgraph.CGINum[vCFG];
+            fcallgraph.CG[uCFG].pop_back();
+            fcallgraph.CGNum[uCFG][vCFG] = 0;
+            fcallgraph.CGCallI[uCFG][vCFG].pop_back();
+            uCFG->BuildCFG();
+            i++;
+        }
+        is_reinline = false;
+    }
+#endif
+
+    /*uCFG->BuildCFG();
+    DominatorTree DomTree;
+    DomTree.C = uCFG;
+    DomTree.BuildDominatorTree();
+    EliminateUnreachedBlocksInsts(uCFG);
+
+    for (auto [id, bb] : *uCFG->block_map) {
+        for (auto I : bb->Instruction_list) {
+            I->SetBlockID(id);
+        }
+    }*/
+
+    /*uCFG->BuildCFG();
+    uCFG->BuildDominatorTree();
+    SimplifyCFG(uCFG);
+    for (auto [id, bb] : *uCFG->block_map) {
+        for (auto I : bb->Instruction_list) {
+            I->SetBlockID(id);
+        }
+    }*/
 }
+void FunctionInline(LLVMIR *IR) {
+    // CFGvis.clear();
+    CFGvis.clear();
+    reinlinecallI.clear();
+    is_reinline = false;
+    InlineDFS(fcallgraph.MainCFG);
 
-void InlinePass::Execute() {
-    // 遍历所有函数
-    for (auto &[funcDef, cfg] : llvmIR->llvm_cfg) {
-        int caller_instr_count = RecalculateCallerInstrCount(cfg);
+    // 使用 DomAnalysis 和 SimplifyCFGPass 对 IR 中的所有函数（CFG）进行分析和优化
+    {
+        // 构建支配树（Dominator Tree）的分析
+        DomAnalysis domAnalysis(IR);
+        domAnalysis.Execute();
 
-        // 寻找可内联的调用指令
-        std::vector<std::tuple<BasicBlock*, CallInstruction*>> calls_to_inline;
-        for (auto &bb_pair : *cfg->block_map) {
-            BasicBlock *block = bb_pair.second;
-            for (auto inst : block->Instruction_list) {
-                if (inst->GetOpcode() == BasicInstruction::CALL) {
-                    CallInstruction *callInst = dynamic_cast<CallInstruction*>(inst);
-                    if (!callInst) continue;
-                    std::string calleeName = callInst->GetFunctionName();
-                    auto it = CFGMap.find(calleeName);
-                    if (it != CFGMap.end()) {
-                        CFG* calleeCFG = it->second;
-                        FuncDefInstruction calleeFunc = calleeCFG->function_def;
-                        if (CanInlineFunction(calleeFunc, caller_instr_count)) {
-                            calls_to_inline.emplace_back(block, callInst);
-                        }
-                    }
-                }
-            }
-        }
+        // 简化 CFG
+        SimplifyCFGPass simplifyCFG(IR);
+        simplifyCFG.Execute();
 
-        // 不断内联直到没有可内联的调用
-        while (!calls_to_inline.empty()) {
-            for (auto &[block, callInst] : calls_to_inline) {
-                std::string calleeName = callInst->GetFunctionName();
-                auto it = CFGMap.find(calleeName);
-                if (it != CFGMap.end()) {
-                    CFG* calleeCFG = it->second;
-                    FuncDefInstruction calleeFunc = calleeCFG->function_def;
-                    InlineFunctionCall(cfg, block, callInst, calleeFunc);
-                }
-            }
-
-            calls_to_inline.clear();
-            caller_instr_count = RecalculateCallerInstrCount(cfg);
-
-            for (auto &bb_pair : *cfg->block_map) {
-                BasicBlock *block = bb_pair.second;
-                for (auto inst : block->Instruction_list) {
-                    if (inst->GetOpcode() == BasicInstruction::CALL) {
-                        CallInstruction *callInst = dynamic_cast<CallInstruction*>(inst);
-                        if (!callInst) continue;
-                        std::string calleeName = callInst->GetFunctionName();
-                        auto it = CFGMap.find(calleeName);
-                        if (it != CFGMap.end()) {
-                            CFG* calleeCFG = it->second;
-                            FuncDefInstruction calleeFunc = calleeCFG->function_def;
-                            if (CanInlineFunction(calleeFunc, caller_instr_count)) {
-                                calls_to_inline.emplace_back(block, callInst);
-                            }
-                        }
-                    }
+        // 对 IR 中的所有 CFG 的指令进行 BlockID 更新
+        for (auto &kv : CFGMap) {
+            auto cfg = kv.second;
+            for (auto [id, bb] : *(cfg->block_map)) {
+                for (auto I : bb->Instruction_list) {
+                    I->SetBlockID(id);
                 }
             }
         }
     }
+
+    // BuildCG();
 }

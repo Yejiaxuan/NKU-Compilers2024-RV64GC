@@ -3,6 +3,7 @@
 
 #include "SysY_tree.h"
 #include "basic_block.h"
+#include "../optimize/transform/function_basicinfo.h"
 #include <bitset>
 #include <iostream>
 #include <map>
@@ -15,6 +16,7 @@ public:
     int max_reg = 0;
     int max_label = 0;
     FuncDefInstruction function_def;
+    FunctionBasicInfo FunctionInfo;
 
     /*this is the pointer to the value of LLVMIR.function_block_map
       you can see it in the LLVMIR::CFGInit()*/
@@ -26,12 +28,15 @@ public:
     LLVMBlock ret_block;                          // 返回基本块
 
     void BuildCFG();
+    void BuildFunctionInfo();
 
     // 获取某个基本块节点的前驱/后继
     std::vector<LLVMBlock> GetPredecessor(LLVMBlock B);
     std::vector<LLVMBlock> GetPredecessor(int bbid);
     std::vector<LLVMBlock> GetSuccessor(LLVMBlock B);
     std::vector<LLVMBlock> GetSuccessor(int bbid);
+    LLVMBlock GetBlock(int bbid);
+    LLVMBlock NewBlock();
 };
 
 #endif

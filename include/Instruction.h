@@ -313,6 +313,7 @@ public:
     virtual std::vector<int> GetUsedRegisters() = 0;
     virtual Operand GetResultReg() = 0;
     virtual void resetOperand(Operand oldO,Operand newO){return;}
+    virtual void SetNonResultOperands(std::vector<Operand> ops) = 0;
 };
 
 // load
@@ -348,7 +349,7 @@ public:
         }
         return;
     }
-    
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 // store
@@ -389,6 +390,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 //<result>=add <ty> <op1>,<op2>
@@ -449,6 +451,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 //<result>=icmp <cond> <ty> <op1>,<op2>
@@ -494,6 +497,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 //<result>=fcmp <cond> <ty> <op1>,<op2>
@@ -536,6 +540,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 // phi syntax:
@@ -575,6 +580,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 // alloca
@@ -609,6 +615,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
+    void SetNonResultOperands(std::vector<Operand> ops) {}
 };
 
 // Conditional branch
@@ -644,6 +651,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 // Unconditional branch
@@ -666,6 +674,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return nullptr; }
+    void SetNonResultOperands(std::vector<Operand> ops) {}
 };
 
 /*
@@ -707,6 +716,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops) {}
 };
 
 class GlobalStringConstInstruction : public BasicInstruction {
@@ -725,6 +735,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
+    void SetNonResultOperands(std::vector<Operand> ops) {}
 };
 
 /*
@@ -793,6 +804,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 /*
@@ -833,6 +845,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 /*
@@ -896,6 +909,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 class FunctionDefineInstruction : public BasicInstruction {
@@ -928,6 +942,8 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
+    int GetFormalSize() { return formals.size(); }
+    void SetNonResultOperands(std::vector<Operand> ops) {}
 };
 typedef FunctionDefineInstruction *FuncDefInstruction;
 
@@ -957,6 +973,7 @@ public:
     virtual int GetResultRegNo();
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
+    void SetNonResultOperands(std::vector<Operand> ops) {}
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -986,6 +1003,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -1016,6 +1034,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 // 无符号扩展，你大概率需要它来将i1无符号扩展至i32(即对应c语言bool类型转int)
@@ -1047,6 +1066,7 @@ public:
         }
         return;
     }
+    void SetNonResultOperands(std::vector<Operand> ops);
 };
 
 std::ostream &operator<<(std::ostream &s, BasicInstruction::LLVMType type);

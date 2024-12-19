@@ -32,6 +32,8 @@ public:
     }
     void printIR(std::ostream &s);
 
+    void BuildFunctionInfo();
+
     void CFGInit();
     void BuildCFG();
 };

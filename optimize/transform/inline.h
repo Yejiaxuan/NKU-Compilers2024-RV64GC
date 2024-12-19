@@ -2,19 +2,19 @@
 #define INLINE_H
 
 #include "../../include/ir.h"
-#include "../pass.h"
+#include <map>
+#include <unordered_map>
 
-class InlinePass : public IRPass {
-private:
-    // 内联行数阈值(例如200行)
-    static const int INLINE_THRESHOLD = 200;
+// 主要的函数内联接口
+void FunctionInline(LLVMIR *IR);
 
-    bool CanInlineFunction(FuncDefInstruction funcDef, int caller_instr_count);
-    void InlineFunctionCall(CFG *callerCFG, BasicBlock *callerBlock, CallInstruction *callInst, FuncDefInstruction calleeFunc);
+// 内联分析和转换函数
+void InlineDFS(CFG *uCFG);
+bool IsInlineBetter(CFG *uCFG, CFG *vCFG);
+CFG *CopyCFG(CFG *uCFG);
+void InlineCFG(CFG *uCFG, CFG *vCFG, uint32_t CallINo);
+Operand InlineCFG(CFG *uCFG, CFG *vCFG, LLVMBlock StartBB, LLVMBlock EndBB, 
+                  std::map<int, int> &reg_replace_map, 
+                  std::map<int, int> &label_replace_map);
 
-public:
-    InlinePass(LLVMIR *IR) : IRPass(IR) {}
-    void Execute();
-};
-
-#endif
+#endif // INLINE_H
