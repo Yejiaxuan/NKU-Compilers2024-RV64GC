@@ -1,6 +1,309 @@
 #include "simple_adce.h"
 #include <iostream>
 #include <cassert>
+#include <unordered_map>
+#include <unordered_set>
+#include <queue>
+#include <algorithm>
+
+// 使用无序容器提升查找速度
+// 假设 block_id 是一个 int，可直接作为无序容器的键
+using BlockMapTy = std::unordered_map<int, BasicBlock*>;
+using BlockSetTy = std::unordered_set<int>;
+
+bool IsCriticalBlock(CFG *C, int block_id) {
+    // 获取该块的前驱和后继
+    auto preds = C->GetPredecessor(block_id);
+    auto succs = C->GetSuccessor(block_id);
+
+    // 如果该块是其他块唯一的前驱或后继，则为关键块
+    if (preds.size() == 1 && succs.size() == 1) {
+        // 例如，前驱唯一性或后继唯一性判断
+        int pred_id = (*preds.begin())->block_id;
+        int succ_id = (*succs.begin())->block_id;
+        auto pred_succs = C->GetSuccessor(pred_id);
+        auto succ_preds = C->GetPredecessor(succ_id);
+        if (pred_succs.size() == 1 || succ_preds.size() == 1) {
+            return true; // 是关键块
+        }
+    }
+    return false;
+}
+
+int ADCEPass::FindFinalTarget(CFG *C, int start_block_id, std::unordered_set<int>& visited) {
+    // 使用显式栈迭代代替递归
+    std::stack<int> stk;
+    stk.push(start_block_id);
+
+    while (!stk.empty()) {
+        int block_id = stk.top();
+        stk.pop();
+
+        if (visited.find(block_id) != visited.end()) {
+            std::cerr << "Cycle detected when processing block " << block_id << std::endl;
+            return -1;
+        }
+        visited.insert(block_id);
+
+        // 优先检查后继
+        auto succs = C->GetSuccessor(block_id);
+        bool found_nonempty = false;
+        for (auto succ : succs) {
+            int succ_id = succ->block_id;
+            auto it = C->block_map->find(succ_id);
+            if (it != C->block_map->end()) {
+                BasicBlock* succ_bb = it->second;
+                if (!succ_bb->Instruction_list.empty()) {
+                    // 如果只有一条无条件跳转指令，则继续向下追踪
+                    if (succ_bb->Instruction_list.size() == 1 &&
+                        succ_bb->Instruction_list.front()->GetOpcode() == BasicInstruction::BR_UNCOND) {
+                        stk.push(succ_id);
+                    } else {
+                        return succ_id;
+                    }
+                    found_nonempty = true;
+                    break; // 如果已经找到可用的后继，直接跳出
+                }
+            }
+        }
+
+        if (!found_nonempty) {
+            // 后继无效，检查前驱
+            auto preds = C->GetPredecessor(block_id);
+            for (auto pred : preds) {
+                int pred_id = pred->block_id;
+                if (C->block_map->find(pred_id) != C->block_map->end()) {
+                    return pred_id; 
+                }
+            }
+        }
+    }
+
+    return -1;
+}
+
+int ADCEPass::GetAlternatePredecessor(CFG *C, int block_id) {
+    auto predecessors = C->GetPredecessor(block_id);
+    if (predecessors.empty()) {
+        std::cerr << "Warning: Block " << block_id << " has no predecessors." << std::endl;
+        return -1;
+    }
+
+    for (auto &pred : predecessors) {
+        if (pred->block_id != block_id) { 
+            return pred->block_id;
+        }
+    }
+
+    std::cerr << "Error: No valid predecessor found for block " << block_id << std::endl;
+    return -1;
+}
+
+void ADCEPass::RemoveEmptyBlocks(CFG *C) {
+    BlockSetTy empty_blocks;
+
+    // 阶段 1：识别所有空块或仅有 BR_UNCOND 的块
+    for (auto &[block_id, bb] : *(C->block_map)) {
+        if (bb->Instruction_list.empty()) {
+            empty_blocks.insert(block_id);
+        } else if (bb->Instruction_list.size() == 1 &&
+                   bb->Instruction_list.front()->GetOpcode() == BasicInstruction::BR_UNCOND) {
+            empty_blocks.insert(block_id);
+        }
+    }
+
+    // 阶段 1.5：标记所有在 PHI 指令中引用的块
+    BlockSetTy blocks_in_phi;
+    for (auto &[block_id, bb] : *(C->block_map)) {
+        for (auto &instr_ptr : bb->Instruction_list) {
+            if (instr_ptr->GetOpcode() == BasicInstruction::PHI) {
+                PhiInstruction* phiInst = dynamic_cast<PhiInstruction*>(instr_ptr);
+                if (!phiInst) continue;
+
+                for (auto &[label, val] : phiInst->GetPhiList()) {
+                    LabelOperand* lbl = dynamic_cast<LabelOperand*>(label);
+                    if (lbl) {
+                        int label_no = lbl->GetLabelNo();
+                        blocks_in_phi.insert(label_no);  // 标记在 PHI 中的块
+                    }
+                }
+            }
+        }
+    }
+
+    // 从 empty_blocks 中移除所有在 PHI 中引用的块
+    for (auto block_id : blocks_in_phi) {
+        empty_blocks.erase(block_id);
+    }
+
+    // 阶段 2：为每个空块记录最终的后继块
+    std::unordered_map<int, int> empty_to_final_successor;
+    empty_to_final_successor.reserve(empty_blocks.size());
+    for (auto block_id : empty_blocks) {
+        std::unordered_set<int> visited;
+        int final_target = FindFinalTarget(C, block_id, visited);
+        empty_to_final_successor[block_id] = final_target;
+    }
+
+    // 阶段 3：更新所有 PHI 指令的前驱引用
+    /*for (auto &[block_id, bb] : *(C->block_map)) {
+        for (auto &instr_ptr : bb->Instruction_list) {
+            if (instr_ptr->GetOpcode() == BasicInstruction::PHI) {
+                PhiInstruction* phiInst = dynamic_cast<PhiInstruction*>(instr_ptr);
+                if (!phiInst) continue;
+
+                std::vector<std::pair<Operand, Operand>> new_phi_list;
+                for (auto &[label, val] : phiInst->GetPhiList()) {
+                    LabelOperand* lbl = dynamic_cast<LabelOperand*>(label);
+                    if (lbl) {
+                        int label_no = lbl->GetLabelNo();
+                        auto it = empty_to_final_successor.find(label_no);
+                        if (it != empty_to_final_successor.end()) {
+                            int final_target = it->second;
+                            if (final_target == -1 || final_target == block_id) {
+                                // 尝试获取替代前驱
+                                final_target = GetAlternatePredecessor(C, label_no);
+                                if (final_target == -1) {
+                                    std::unordered_set<int> visited;
+                                    final_target = FindFinalTarget(C, label_no, visited);
+                                }
+                                if (final_target == -1) continue;
+                            }
+                            Operand new_label = GetNewLabelOperand(final_target);
+                            new_phi_list.emplace_back(new_label, val);
+                        } else {
+                            new_phi_list.emplace_back(label, val);  // 保持引用不变
+                        }
+                    } else {
+                        new_phi_list.emplace_back(label, val);  // 保持引用不变
+                    }
+                }
+                phiInst->ReplacePhiList(new_phi_list);
+            }
+        }
+    }*/
+
+    // 阶段 4：更新前驱块的跳转指令
+    std::unordered_set<int> affected_blocks; 
+    for (auto block_id : empty_blocks) {
+        int final_target = empty_to_final_successor[block_id];
+        if (final_target == -1) continue;
+
+        for (auto pred : C->invG[block_id]) {
+            int pred_id = pred->block_id;
+            if (pred_id == block_id) continue;
+            affected_blocks.insert(pred_id);
+        }
+    }
+
+for (auto pred_id : affected_blocks) {
+    auto pred_it = C->block_map->find(pred_id);
+    if (pred_it == C->block_map->end()) continue;
+    BasicBlock* pred_bb = pred_it->second;
+    if (pred_bb->Instruction_list.empty()) continue;
+
+    BasicInstruction* lastInst = pred_bb->Instruction_list.back();
+    if (lastInst->GetOpcode() == BasicInstruction::BR_UNCOND) {
+        BrUncondInstruction* brUncond = dynamic_cast<BrUncondInstruction*>(lastInst);
+        if (brUncond) {
+            int old_label = dynamic_cast<LabelOperand*>(brUncond->GetDestLabel())->GetLabelNo();
+
+            // 检查 old_label 是否在 empty_blocks 中
+            if (empty_blocks.find(old_label) == empty_blocks.end()) {
+                continue; // 如果不是空块，跳过更新
+            }
+
+            auto it = empty_to_final_successor.find(old_label);
+            if (it != empty_to_final_successor.end() && it->second != -1) {
+                brUncond->ReplaceLabel(GetNewLabelOperand(it->second));
+            }
+        }
+    } else if (lastInst->GetOpcode() == BasicInstruction::BR_COND) {
+        // 对条件跳转类似处理，确保只修改空块
+        BrCondInstruction* brCond = dynamic_cast<BrCondInstruction*>(lastInst);
+        if (brCond) {
+            LabelOperand* trueLabel = dynamic_cast<LabelOperand*>(brCond->GetTrueLabel());
+            LabelOperand* falseLabel = dynamic_cast<LabelOperand*>(brCond->GetFalseLabel());
+
+            if (trueLabel) {
+                int tl = trueLabel->GetLabelNo();
+                if (empty_blocks.find(tl) != empty_blocks.end()) {
+                    auto it = empty_to_final_successor.find(tl);
+                    if (it != empty_to_final_successor.end() && it->second != -1) {
+                        brCond->ReplaceTrueLabel(GetNewLabelOperand(it->second));
+                    }
+                }
+            }
+            if (falseLabel) {
+                int fl = falseLabel->GetLabelNo();
+                if (empty_blocks.find(fl) != empty_blocks.end()) {
+                    auto it = empty_to_final_successor.find(fl);
+                    if (it != empty_to_final_successor.end() && it->second != -1) {
+                        brCond->ReplaceFalseLabel(GetNewLabelOperand(it->second));
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+    // 阶段 5：删除所有空的基本块
+    for (auto block_id : empty_blocks) {
+        if (IsCriticalBlock(C, block_id)) {
+        continue; // 跳过关键块
+    }
+        auto it = C->block_map->find(block_id);
+        if (it != C->block_map->end()) {
+            for (auto pred : C->invG[block_id]) {
+                auto &succ_list = C->G[pred->block_id];
+                succ_list.erase(std::remove_if(succ_list.begin(), succ_list.end(),
+                    [&](LLVMBlock b) { return b->block_id == block_id; }),
+                    succ_list.end());
+            }
+            for (auto succ : C->G[block_id]) {
+                auto &pred_list = C->invG[succ->block_id];
+                pred_list.erase(std::remove_if(pred_list.begin(), pred_list.end(),
+                    [&](LLVMBlock b) { return b->block_id == block_id; }),
+                    pred_list.end());
+            }
+
+            C->G[block_id].clear();
+            C->invG[block_id].clear();
+            delete it->second;
+            C->block_map->erase(block_id);
+        }
+    }
+}
+
+
+
+void ADCEPass::RemoveUselessControlFlow(CFG *C) {
+    // 逻辑不变，保持原样即可
+    for(auto &[block_id, bb] : *(C->block_map)) {
+        if(bb->Instruction_list.empty()) continue;
+
+        BasicInstruction* lastInst = bb->Instruction_list.back();
+        if(lastInst->GetOpcode() == BasicInstruction::BR_COND) {
+            BrCondInstruction* brCond = dynamic_cast<BrCondInstruction*>(lastInst);
+            if(brCond) {
+                Operand cond = brCond->GetCond();
+                if(auto imm = dynamic_cast<ImmI32Operand*>(cond)) {
+                    // 条件分支简化逻辑保持原样
+                    if(imm->GetIntImmVal() != 0) { 
+                        BrUncondInstruction* brUncond = new BrUncondInstruction(brCond->GetTrueLabel());
+                        delete lastInst;
+                        bb->Instruction_list.back() = brUncond;
+                    } else {
+                        BrUncondInstruction* brUncond = new BrUncondInstruction(brCond->GetFalseLabel());
+                        delete lastInst;
+                        bb->Instruction_list.back() = brUncond;
+                    }
+                }
+            }
+        }
+    }
+}
 
 /**
  * @brief 构建控制依赖图（CDG）。
@@ -17,7 +320,7 @@ void ADCEPass::BuildControlDependence(CFG *C) {
         std::set<int> df = dom_tree->GetDF(y_id);
         for(auto x_id : df) {
             // 基本块 x 在基本块 y 的支配前沿上，因此 x 控制依赖于 y
-            control_dependence[y_id].insert(x_id);
+            control_dependence[x_id].insert(y_id);
         }
     }
 }
@@ -31,19 +334,18 @@ void ADCEPass::BuildControlDependence(CFG *C) {
  * @return 返回活跃指令的集合。
  */
 std::set<BasicInstruction*> ADCEPass::ComputeLiveInstructions(CFG *C) {
-    std::set<BasicInstruction*> live;          // 活跃的指令集合
-    std::queue<BasicInstruction*> worklist;    // 工作列表，用于迭代处理
-    std::map<Operand, BasicInstruction*> defMap; // 定义映射：操作数（寄存器） -> 定义它的指令
+    std::set<BasicInstruction*> live;
+    std::queue<BasicInstruction*> worklist;
+    std::map<int, BasicInstruction*> defMap; // 使用寄存器编号作为键
 
-    // 步骤 1：构建 defMap 并初始化工作列表
+    // 构建 defMap 并初始化工作列表
     for(auto &[block_id, bb] : *(C->block_map)) {
         for(auto &instr_ptr : bb->Instruction_list) {
-            BasicInstruction* instr = instr_ptr; // 假设 Instruction 是 BasicInstruction*
-            
-            // 如果指令有结果寄存器，记录其定义关系
+            BasicInstruction* instr = instr_ptr;
             Operand res = instr->GetResultReg();
             if(res && res->GetOperandType() == BasicOperand::REG) {
-                defMap[res] = instr;
+                int reg_no = static_cast<RegOperand*>(res)->GetRegNo();
+                defMap[reg_no] = instr;
             }
 
             // 将所有有副作用的指令加入工作列表
@@ -58,38 +360,53 @@ std::set<BasicInstruction*> ADCEPass::ComputeLiveInstructions(CFG *C) {
                instr->GetOpcode() == BasicInstruction::GLOBAL_STR) {
                 worklist.push(instr);
                 live.insert(instr);
+                //Log("Marking instruction %p as live in block %d\n", instr, block_id);
             }
         }
     }
 
-    // 步骤 2：迭代标记活跃指令
+    // 迭代标记活跃指令
     while(!worklist.empty()) {
         BasicInstruction* inst = worklist.front();
         worklist.pop();
+        //Log("Processing live instruction %p\n", inst);
 
-        // 获取指令的所有使用（use）
+        // 获取指令的所有使用
         std::vector<Operand> uses = inst->GetNonResultOperands();
         for(auto &use : uses) {
             if(use->GetOperandType() == BasicOperand::REG) {
-                // 查找定义该操作数的指令
-                auto it = defMap.find(use);
+                int reg_no = static_cast<RegOperand*>(use)->GetRegNo();
+                auto it = defMap.find(reg_no);
                 if(it != defMap.end()) {
                     BasicInstruction* def_inst = it->second;
                     if(live.find(def_inst) == live.end()) {
                         worklist.push(def_inst);
                         live.insert(def_inst);
+                        //Log("Marking definition instruction %p as live\n", def_inst);
                     }
                 }
             }
         }
 
-        // 如果是 phi 指令，标记所有前驱块的终结指令为活跃
+        // 处理 PHI 指令
         if(inst->GetOpcode() == BasicInstruction::PHI) {
             PhiInstruction* phiInst = dynamic_cast<PhiInstruction*>(inst);
             if(phiInst) {
                 for(auto &[val, label] : phiInst->GetPhiList()) {
+                    if(val->GetOperandType() == BasicOperand::REG) {
+                        int reg_no = static_cast<RegOperand*>(val)->GetRegNo();
+                        auto it = defMap.find(reg_no);
+                        if(it != defMap.end()) {
+                            BasicInstruction* def_inst = it->second;
+                            if(live.find(def_inst) == live.end()) {
+                                worklist.push(def_inst);
+                                live.insert(def_inst);
+                                //Log("Marking PHI operand definition instruction %p as live\n", def_inst);
+                            }
+                        }
+                    }
                     if(label->GetOperandType() == BasicOperand::LABEL) {
-                        int label_no = dynamic_cast<LabelOperand*>(label)->GetLabelNo();
+                        int label_no = static_cast<LabelOperand*>(label)->GetLabelNo();
                         auto pred_block_it = C->block_map->find(label_no);
                         if(pred_block_it != C->block_map->end()) {
                             LLVMBlock pred_bb = pred_block_it->second;
@@ -98,6 +415,7 @@ std::set<BasicInstruction*> ADCEPass::ComputeLiveInstructions(CFG *C) {
                                 if(live.find(pred_terminator) == live.end()) {
                                     worklist.push(pred_terminator);
                                     live.insert(pred_terminator);
+                                    //Log("Marking terminator instruction %p of predecessor block %d as live\n", pred_terminator, label_no);
                                 }
                             }
                         }
@@ -106,17 +424,17 @@ std::set<BasicInstruction*> ADCEPass::ComputeLiveInstructions(CFG *C) {
             }
         }
 
-        // 步骤 3：添加控制依赖的终结指令到工作列表
+        // 新增：处理控制依赖
         int block_id = inst->GetBlockID();
         auto cdg_it = control_dependence.find(block_id);
-        if(cdg_it != control_dependence.end()) {
-            for(auto dep_block_id : cdg_it->second) {
+        if (cdg_it != control_dependence.end()) {
+            for (auto dep_block_id : cdg_it->second) {
                 auto dep_block_it = C->block_map->find(dep_block_id);
-                if(dep_block_it != C->block_map->end()) {
+                if (dep_block_it != C->block_map->end()) {
                     LLVMBlock dep_block = dep_block_it->second;
-                    if(!dep_block->Instruction_list.empty()) {
+                    if (!dep_block->Instruction_list.empty()) {
                         BasicInstruction* dep_terminator = dep_block->Instruction_list.back();
-                        if(live.find(dep_terminator) == live.end()) {
+                        if (live.find(dep_terminator) == live.end()) {
                             worklist.push(dep_terminator);
                             live.insert(dep_terminator);
                         }
@@ -125,42 +443,37 @@ std::set<BasicInstruction*> ADCEPass::ComputeLiveInstructions(CFG *C) {
             }
         }
     }
-
     return live;
 }
+// BuildControlDependence和ComputeLiveInstructions保持原逻辑不变，
+// 可考虑使用unordered_map/unordered_set对控制依赖和defMap进行加速。
+// 以及在ComputeLiveInstructions中使用use-def链优化等。
 
-/**
- * @brief 执行 ADCE 优化。
- *
- * 对每个函数的控制流图执行 ADCE，以删除死代码。
- */
 void ADCEPass::Execute() {
     for(auto &[defI, cfg] : llvmIR->llvm_cfg) {
-        // 步骤 1：构建控制依赖图（CDG）
+        // 构建控制依赖图（CDG）
         BuildControlDependence(cfg);
 
-        // 步骤 2：计算活跃的指令
+        // 计算活跃指令
         std::set<BasicInstruction*> live = ComputeLiveInstructions(cfg);
 
-        // 步骤 3：删除未标记为活跃的指令
+        // 删除不活跃指令
         for(auto &[block_id, bb] : *(cfg->block_map)) {
             std::deque<BasicInstruction*> new_inst_list;
-            for(auto &instr_ptr : bb->Instruction_list) {
+            for (auto &instr_ptr : bb->Instruction_list) {
                 BasicInstruction* instr = instr_ptr;
                 if(live.find(instr) != live.end()) {
                     new_inst_list.push_back(instr);
-                }
-                else {
-                    // 删除指令并释放内存
+                } else {
                     delete instr;
                 }
             }
-            // 替换 Instruction_list 为 new_inst_list
             bb->Instruction_list = new_inst_list;
         }
 
-        // 可选步骤：移除空的基本块（如果有需要）
-        // 这里不实现，依据具体需求添加
+        RemoveUselessControlFlow(cfg);
+        RemoveEmptyBlocks(cfg);
+        
     }
 }
 

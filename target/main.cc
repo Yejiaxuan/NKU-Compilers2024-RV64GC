@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
     optimize_flag = (argc == 6 && (strcmp(argv[optimize_tag], "-O1") == 0));
     if (optimize_flag) {
 
-        for (auto [defI, cfg] : llvmIR.llvm_cfg) {
+        /*for (auto [defI, cfg] : llvmIR.llvm_cfg) {
             RetMotion(cfg);
         }
 
@@ -191,20 +191,20 @@ int main(int argc, char **argv) {
 
         llvmIR.BuildFunctionInfo();
 
-        FunctionInline(&llvmIR);
+        //FunctionInline(&llvmIR);
 
-        EliminateUselessFunction(&llvmIR);
+        EliminateUselessFunction(&llvmIR);*/
 
-        // TCOPass(&llvmIR).Execute(); 会报runtime error
-        
+        //TCOPass(&llvmIR).Execute(); //会报runtime error
+
         DomAnalysis dom(&llvmIR);
         
         dom.Execute();   // 完成支配树建立后，取消该行代码的注释
         (Mem2RegPass(&llvmIR, &dom)).Execute();
         
-        SimpleDCEPass(&llvmIR).Execute();
+        //SimpleDCEPass(&llvmIR).Execute();
 
-	    ADCEPass(&llvmIR, &dom).Execute();
+	//ADCEPass(&llvmIR, &dom).Execute();
 
 
         // TODO: add more passes
@@ -239,4 +239,5 @@ int main(int argc, char **argv) {
     fout.close();
     return 0;
 }
+
 

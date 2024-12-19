@@ -640,6 +640,8 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     void ReplaceLabelByMap(const std::map<int, int> &Rule);
+    void ReplaceTrueLabel(Operand newLabel) { trueLabel = newLabel; }  // 添加的方法
+    void ReplaceFalseLabel(Operand newLabel) { falseLabel = newLabel; } // 添加的方法
     std::vector<Operand> GetNonResultOperands();
     virtual Instruction CopyInstruction();
     virtual int GetResultRegNo();
@@ -669,6 +671,7 @@ public:
     virtual void PrintIR(std::ostream &s);
     void ReplaceRegByMap(const std::map<int, int> &Rule);
     void ReplaceLabelByMap(const std::map<int, int> &Rule);
+    void ReplaceLabel(Operand newLabel) { destLabel = newLabel; }
     std::vector<Operand> GetNonResultOperands() { return std::vector<Operand>{}; }
     virtual Instruction CopyInstruction();
     virtual int GetResultRegNo();
