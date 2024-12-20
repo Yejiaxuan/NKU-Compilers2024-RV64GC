@@ -253,6 +253,15 @@ public:
         SITOFP = 27,
         GLOBAL_VAR = 28,
         GLOBAL_STR = 29,
+        LL_ADDMOD = 30,
+        UMIN_I32 = 31,
+        UMAX_I32 = 32,
+        SMIN_I32 = 33,
+        SMAX_I32 = 34,
+        BITCAST = 35,
+        FMIN_F32 = 36,
+        FMAX_F32 = 37,
+        BITAND = 38,
     };
 
     // @Operand datatypes
@@ -314,6 +323,8 @@ public:
     virtual Operand GetResultReg() = 0;
     virtual void resetOperand(Operand oldO,Operand newO){return;}
     virtual void SetNonResultOperands(std::vector<Operand> ops) = 0;
+    virtual int IsFuncDef() { return 0; }
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) = 0;
 };
 
 // load
@@ -350,6 +361,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 // store
@@ -391,6 +403,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 //<result>=add <ty> <op1>,<op2>
@@ -452,6 +465,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 //<result>=icmp <cond> <ty> <op1>,<op2>
@@ -498,6 +512,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 //<result>=fcmp <cond> <ty> <op1>,<op2>
@@ -541,6 +556,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 // phi syntax:
@@ -581,6 +597,17 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
+    void ErasePhi(int label_id)
+    {
+        for (auto it = phi_list.begin(); it != phi_list.end(); ++it) {
+            auto [label, val] = *it;
+            if (((LabelOperand *)label)->GetLabelNo() == label_id) {
+                phi_list.erase(it);
+                break;
+            }
+        }
+    }
 };
 
 // alloca
@@ -616,6 +643,7 @@ public:
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return result; }
     void SetNonResultOperands(std::vector<Operand> ops) {}
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
 };
 
 // Conditional branch
@@ -654,6 +682,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
 };
 
 // Unconditional branch
@@ -678,6 +707,8 @@ public:
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return nullptr; }
     void SetNonResultOperands(std::vector<Operand> ops) {}
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
+    int GetTarget() { return ((LabelOperand *)destLabel)->GetLabelNo(); }
 };
 
 /*
@@ -720,6 +751,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops) {}
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
 };
 
 class GlobalStringConstInstruction : public BasicInstruction {
@@ -739,6 +771,7 @@ public:
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
     void SetNonResultOperands(std::vector<Operand> ops) {}
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
 };
 
 /*
@@ -808,6 +841,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 /*
@@ -849,6 +883,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
 };
 
 /*
@@ -913,6 +948,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 class FunctionDefineInstruction : public BasicInstruction {
@@ -947,6 +983,8 @@ public:
     Operand GetResultReg() { return NULL; }
     int GetFormalSize() { return formals.size(); }
     void SetNonResultOperands(std::vector<Operand> ops) {}
+    virtual int IsFuncDef() { return 1; }
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
 };
 typedef FunctionDefineInstruction *FuncDefInstruction;
 
@@ -977,6 +1015,7 @@ public:
     virtual std::vector<int> GetUsedRegisters();
     Operand GetResultReg() { return NULL; }
     void SetNonResultOperands(std::vector<Operand> ops) {}
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -1007,6 +1046,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 // 这条指令目前只支持float和i32的转换，如果你需要double, i64等类型，需要自己添加更多变量
@@ -1038,6 +1078,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 // 无符号扩展，你大概率需要它来将i1无符号扩展至i32(即对应c语言bool类型转int)
@@ -1070,6 +1111,7 @@ public:
         return;
     }
     void SetNonResultOperands(std::vector<Operand> ops);
+    virtual int ConstPropagate(std::map<int, Instruction> &regresult_map);
 };
 
 std::ostream &operator<<(std::ostream &s, BasicInstruction::LLVMType type);

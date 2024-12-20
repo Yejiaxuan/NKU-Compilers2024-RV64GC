@@ -8,6 +8,7 @@
 #include "../optimize/transform/inline.h"
 #include "../optimize/transform/simple_adce.h"
 #include "../optimize/transform/tco.h"
+#include "../optimize/transform/sccp.h"
 
 #include "../optimize/analysis/dominator_tree.h"
 
@@ -171,19 +172,23 @@ int main(int argc, char **argv) {
 
         TCOPass(&llvmIR).Execute();
 
-        llvmIR.BuildFunctionInfo();
-
-        InlinePass(&llvmIR).Execute();
-
         DomAnalysis dom(&llvmIR);
         
         dom.Execute();   // 完成支配树建立后，取消该行代码的注释
         
         (Mem2RegPass(&llvmIR, &dom)).Execute();
+
+        SimplifyCFGPass(&llvmIR).Execute();
+
+        SCCPPass(&llvmIR, &dom).Execute();
         
         SimpleDCEPass(&llvmIR).Execute();
 
-	    ADCEPass(&llvmIR, &dom).Execute();
+	    //ADCEPass(&llvmIR, &dom).Execute();
+
+        llvmIR.BuildFunctionInfo();
+
+        InlinePass(&llvmIR).Execute();
 
 
         // TODO: add more passes

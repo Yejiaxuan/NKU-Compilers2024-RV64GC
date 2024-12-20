@@ -14,8 +14,6 @@ private:
     std::unordered_map<Instruction, bool> reinlinecallI; 
     bool is_reinline;
 
-    void MakeFunctionOneExit(CFG* C);
-    void RetMotion(CFG* C);
     void InlineDFS(CFG* uCFG);
     CFG* CopyCFG(CFG* uCFG);
     void InlineCFG(CFG* uCFG, CFG* vCFG, uint32_t CallINo);
