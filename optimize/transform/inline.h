@@ -15,12 +15,12 @@ private:
     bool is_reinline;
 
     void InlineDFS(CFG* uCFG);
-    CFG* CopyCFG(CFG* uCFG);
+    CFG* Clone(CFG* uCFG);
     void InlineCFG(CFG* uCFG, CFG* vCFG, uint32_t CallINo);
     Operand InlineCFG(CFG* uCFG, CFG* vCFG, LLVMBlock StartBB, LLVMBlock EndBB,
                       std::map<int,int>& reg_replace_map,
                       std::map<int,int>& label_replace_map);
-    void EliminateUselessFunction();
+    void RemoveUnusedFunctions();
 
 public:
     InlinePass(LLVMIR* ir) : IRPass(ir) {

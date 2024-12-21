@@ -8,6 +8,40 @@
 extern std::map<std::string, CFG *> CFGMap;
 extern FunctionCallGraph fcallgraph;
 
+void InlinePass::Execute() {
+    CFGvis.clear();
+    reinlinecallI.clear();
+    is_reinline = false;
+
+    InlineDFS(fcallgraph.MainCFG);
+
+    DomAnalysis domAnalysis(llvmIR);
+    domAnalysis.Execute();
+
+    SimplifyCFGPass simplifyCFG(llvmIR);
+    simplifyCFG.Execute();
+
+    for (auto& kv : CFGMap) {
+        auto cfg = kv.second;
+        for (auto [id, bb] : *(cfg->block_map)) {
+            for (auto I : bb->Instruction_list) {
+                I->SetBlockID(id);
+            }
+        }
+    }
+
+    RemoveUnusedFunctions();
+}
+
+bool whether(CFG *uCFG, CFG *vCFG) {
+    auto vFuncdef = vCFG->function_def->formals;
+    bool flag1 = fcallgraph.CGINum[vCFG] <= 30;
+    bool flag2 = fcallgraph.CGINum[uCFG] + fcallgraph.CGINum[vCFG] <= 200;
+    return flag1 && flag2 ;
+
+}
+
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/optimize/function/function_inline.cc line60-line130
 Operand InlinePass::InlineCFG(CFG *uCFG, CFG *vCFG, LLVMBlock StartBB, LLVMBlock EndBB, std::map<int, int> &reg_replace_map,
                   std::map<int, int> &label_replace_map) {
     label_replace_map[0] = StartBB->block_id;
@@ -77,6 +111,7 @@ Operand InlinePass::InlineCFG(CFG *uCFG, CFG *vCFG, LLVMBlock StartBB, LLVMBlock
     return nullptr;
 }
 
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/optimize/function/function_inline.cc line131-line246
 void InlinePass::InlineCFG(CFG *uCFG, CFG *vCFG, uint32_t CallINo) {
     std::map<int, int> reg_replace_map;
     std::map<int, int> label_replace_map;
@@ -194,171 +229,183 @@ void InlinePass::InlineCFG(CFG *uCFG, CFG *vCFG, uint32_t CallINo) {
     label_replace_map.clear();
 }
 
-bool IsInlineBetter(CFG *uCFG, CFG *vCFG) {
-    bool flag3 = false;
-    auto vFuncdef = vCFG->function_def->formals;
-    for (auto type : vFuncdef) {
-        if (type == BasicInstruction::PTR) {
-            flag3 = true;
-            break;
-        }
-    }
-    flag3 &= uCFG != vCFG;
-    bool flag1 = fcallgraph.CGINum[vCFG] <= 30;
-    bool flag2 = fcallgraph.CGINum[uCFG] + fcallgraph.CGINum[vCFG] <= 200;
-    return flag1 || flag2 || flag3;
-}
+CFG* InlinePass::Clone(CFG* originalCFG) {
+    // 创建一个新的CFG对象
+    auto newCFG = new CFG();
+    
+    // 复制函数定义相关信息
+    auto originalDef = originalCFG->function_def;
+    newCFG->function_def = new FunctionDefineInstruction(
+        originalDef->GetReturnType(),
+        "inline_copy_" + std::to_string(rand())  // 生成随机函数名
+    );
 
-CFG *InlinePass::CopyCFG(CFG *uCFG) {
-    CFG *vCFG = new CFG;
-    auto max_label = uCFG->max_label;
-    auto func_def = uCFG->function_def;
-    auto newFuncDef = new FunctionDefineInstruction(func_def->GetReturnType(), ".....CopyInlineFunc");
-    vCFG->function_def = newFuncDef;
-    vCFG->block_map = new std::map<int, LLVMBlock>;
-    vCFG->max_label = -1;
-    int lastid = -1;
-    for (auto [id, bb] : *uCFG->block_map) {
-        LLVMBlock new_block;
-        while (id != lastid) {
-            lastid++;
-            new_block = vCFG->NewBlock();
-        }
-        lastid = id;
-        for (auto I : bb->Instruction_list) {
-            auto newI = I->CopyInstruction();
-            new_block->InsertInstruction(1, newI);
-            newI->SetBlockID(id);
-            if (newI->GetOpcode() == BasicInstruction::RET) {
-                vCFG->ret_block = new_block;
-            }
-            if (newI->GetOpcode() == BasicInstruction::CALL &&
-                CFGMap.find(((CallInstruction *)newI)->GetFunctionName()) != CFGMap.end()) {
-                auto CallI = (CallInstruction *)newI;
-                if (CallI->GetFunctionName() == uCFG->function_def->GetFunctionName()) {
-                    fcallgraph.CGNum[uCFG][uCFG]++;
-                    reinlinecallI[CallI] = true;
-                    fcallgraph.CGCallI[uCFG][uCFG].push_back(CallI);
+    // 初始化新CFG的属性
+    newCFG->block_map = new std::map<int, LLVMBlock>();
+    newCFG->max_reg = originalCFG->max_reg;
+    newCFG->max_label = -1;
+
+    // 创建所有基本块
+    std::map<int, LLVMBlock> tempBlocks;
+    for(int i = 0; i <= originalCFG->max_label; i++) {
+        tempBlocks[i] = newCFG->NewBlock();
+    }
+
+    // 复制每个基本块的指令
+    for(const auto& [blockId, block] : *originalCFG->block_map) {
+        auto targetBlock = tempBlocks[blockId];
+        
+        // 复制所有指令
+        for(auto inst : block->Instruction_list) {
+            auto copiedInst = inst->CopyInstruction();
+            if(!copiedInst) continue;
+            
+            copiedInst->SetBlockID(blockId);
+            targetBlock->InsertInstruction(1, copiedInst);
+            
+            // 处理特殊指令
+            switch(copiedInst->GetOpcode()) {
+                case BasicInstruction::RET:
+                    newCFG->ret_block = targetBlock;
+                    break;
+                    
+                case BasicInstruction::CALL: {
+                    auto callInst = static_cast<CallInstruction*>(copiedInst);
+                    auto funcName = callInst->GetFunctionName();
+                    
+                    // 处理递归调用
+                    if(funcName == originalCFG->function_def->GetFunctionName()) {
+                        fcallgraph.CGNum[originalCFG][originalCFG]++;
+                        reinlinecallI[callInst] = true;
+                        fcallgraph.CGCallI[originalCFG][originalCFG].push_back(callInst);
+                    }
+                    break;
                 }
             }
         }
     }
-    vCFG->max_reg = uCFG->max_reg;
-    fcallgraph.CG[uCFG].push_back(vCFG);
-    fcallgraph.CGNum[uCFG][vCFG] = 1;
-    fcallgraph.CGINum[vCFG] = fcallgraph.CGINum[uCFG];
-    return vCFG;
+
+    // 更新调用图信息
+    fcallgraph.CG[originalCFG].push_back(newCFG);
+    fcallgraph.CGNum[originalCFG][newCFG] = 1;
+    fcallgraph.CGINum[newCFG] = fcallgraph.CGINum[originalCFG];
+
+    return newCFG;
 }
 
-void InlinePass::InlineDFS(CFG *uCFG) {
-    if (CFGvis.find(uCFG) != CFGvis.end()) {
-        return;
-    }
-    CFGvis[uCFG] = true;
+void InlinePass::InlineDFS(CFG* currentCFG) {
+    if(CFGvis[currentCFG]) return;
+    CFGvis[currentCFG] = true;
 
-    for (auto vCFG : fcallgraph.CG[uCFG]) {
-        if (uCFG == vCFG) {
-            continue;
+    // 获取所有被调用的函数
+    std::vector<std::pair<CFG*, int>> calledFuncs;
+    for(auto calleeCFG : fcallgraph.CG[currentCFG]) {
+        if(calleeCFG == currentCFG) continue;
+        
+        InlineDFS(calleeCFG);
+        if(fcallgraph.CGNum[currentCFG].count(calleeCFG)) {
+            calledFuncs.push_back({calleeCFG, fcallgraph.CGNum[currentCFG][calleeCFG]});
         }
-        InlineDFS(vCFG);
-        if (fcallgraph.CG.find(vCFG) == fcallgraph.CG.end() ||
-            fcallgraph.CGNum[vCFG].find(vCFG) != fcallgraph.CGNum[vCFG].end()) {
-            continue;
-        }
-        auto map_size = fcallgraph.CGNum[uCFG][vCFG];
-        for (uint32_t i = 0; i < map_size; ++i) {
-            if (!IsInlineBetter(uCFG, vCFG)) {
-                break;
+    }
+
+    // 内联其他函数
+    for(auto [calleeCFG, callCount] : calledFuncs) {
+        if(fcallgraph.CG.count(calleeCFG) && !fcallgraph.CGNum[calleeCFG].count(calleeCFG)) {
+            for(int i = 0; i < callCount && whether(currentCFG, calleeCFG); i++) {
+                InlineCFG(currentCFG, calleeCFG, i);
+                fcallgraph.CGINum[currentCFG] += fcallgraph.CGINum[calleeCFG];
+                currentCFG->BuildCFG();
             }
-            InlineCFG(uCFG, vCFG, i);
-            fcallgraph.CGINum[uCFG] += fcallgraph.CGINum[vCFG];
-            uCFG->BuildCFG();
         }
     }
 
-#ifdef O3_ENABLE
-    if (fcallgraph.CG.find(uCFG) != fcallgraph.CG.end() &&
-        fcallgraph.CGNum[uCFG].find(uCFG) != fcallgraph.CGNum[uCFG].end()) {
-        int i = 0;
-        while (IsInlineBetter(uCFG, uCFG)) {
-            is_reinline = true;
-            auto vCFG = CopyCFG(uCFG);
-            auto oldI = (CallInstruction *)fcallgraph.CGCallI[uCFG][uCFG][i];
-            auto CallI = (CallInstruction *)oldI->CopyInstruction();
-            CallI->SetFunctionName(vCFG->function_def->GetFunctionName());
-            CallI->SetBlockID(oldI->GetBlockID());
-            fcallgraph.CGCallI[uCFG][uCFG][i] = CallI;
-            oldI->SetFunctionName(vCFG->function_def->GetFunctionName());
-            auto block_map = uCFG->block_map;
-            auto oldbb = (*block_map)[oldI->GetBlockID()];
-            fcallgraph.CGCallI[uCFG][vCFG].push_back(oldI);
-
-            InlineCFG(uCFG, vCFG, 0);
-
-            fcallgraph.CGINum[uCFG] += fcallgraph.CGINum[vCFG];
-            fcallgraph.CG[uCFG].pop_back();
-            fcallgraph.CGNum[uCFG][vCFG] = 0;
-            fcallgraph.CGCallI[uCFG][vCFG].pop_back();
-            uCFG->BuildCFG();
-            i++;
+    // 处理递归函数
+    if(fcallgraph.CGNum[currentCFG].count(currentCFG)) {
+        std::queue<CallInstruction*> recursiveCalls;
+        for(auto call : fcallgraph.CGCallI[currentCFG][currentCFG]) {
+            recursiveCalls.push(static_cast<CallInstruction*>(call));
         }
+
+        while(!recursiveCalls.empty() && whether(currentCFG, currentCFG)) {
+            is_reinline = true;
+            
+            // 创建函数副本并更新调用
+            auto funcCopy = Clone(currentCFG);
+            auto originalCall = recursiveCalls.front();
+            recursiveCalls.pop();
+            
+            // 复制调用指令并更新名称
+            auto newCall = static_cast<CallInstruction*>(originalCall->CopyInstruction());
+            newCall->SetFunctionName(funcCopy->function_def->GetFunctionName());
+            newCall->SetBlockID(originalCall->GetBlockID());
+            
+            // 执行内联
+            fcallgraph.CGCallI[currentCFG][funcCopy].push_back(originalCall);
+            InlineCFG(currentCFG, funcCopy, 0);
+            
+            // 清理并更新
+            fcallgraph.CGINum[currentCFG] += fcallgraph.CGINum[funcCopy];
+            fcallgraph.CG[currentCFG].pop_back();
+            fcallgraph.CGNum[currentCFG][funcCopy] = 0;
+            fcallgraph.CGCallI[currentCFG][funcCopy].clear();
+            
+            currentCFG->BuildCFG();
+        }
+        
         is_reinline = false;
     }
-#endif
 }
 
-void InlinePass::EliminateUselessFunction() {
-    std::set<std::string> CallStrSet;
-
-    for (auto [defI, cfg] : llvmIR->llvm_cfg) {
-        for (auto [id, bb] : *(cfg->block_map)) {
-            for (auto I : bb->Instruction_list) {
-                if (I->GetOpcode() == BasicInstruction::CALL) {
-                    auto CallI = (CallInstruction *)I;
-                    CallStrSet.insert(CallI->GetFunctionName());
+void InlinePass::RemoveUnusedFunctions() {
+    // 使用邻接表表示函数调用图
+    std::unordered_map<std::string, std::vector<std::string>> callGraph;
+    std::unordered_map<std::string, FuncDefInstruction> nameToDefMap;
+    std::set<std::string> allFuncs;
+    
+    // 第一遍遍历:构建调用图
+    for(const auto& [defI, cfg] : llvmIR->llvm_cfg) {
+        std::string caller = defI->GetFunctionName();
+        nameToDefMap[caller] = defI;
+        allFuncs.insert(caller);
+        
+        // 遍历所有基本块查找调用指令
+        for(const auto& [id, bb] : *(cfg->block_map)) {
+            for(auto inst : bb->Instruction_list) {
+                if(auto callInst = dynamic_cast<CallInstruction*>(inst)) {
+                    std::string callee = callInst->GetFunctionName();
+                    callGraph[caller].push_back(callee);
                 }
             }
         }
     }
-
-    std::set<FuncDefInstruction> EraseFuncDefSet;
-    for (auto [defI, cfg] : llvmIR->llvm_cfg) {
-        auto func_name = defI->GetFunctionName();
-        if (func_name == "main") {
-            continue;
-        }
-        if (CallStrSet.find(func_name) == CallStrSet.end()) {
-            EraseFuncDefSet.insert(defI);
-        }
-    }
-
-    for (auto I : EraseFuncDefSet) {
-        llvmIR->llvm_cfg.erase(I);
-        llvmIR->function_block_map.erase(I);
-    }
-}
-
-void InlinePass::Execute() {
-    CFGvis.clear();
-    reinlinecallI.clear();
-    is_reinline = false;
-
-    InlineDFS(fcallgraph.MainCFG);
-
-    DomAnalysis domAnalysis(llvmIR);
-    domAnalysis.Execute();
-
-    SimplifyCFGPass simplifyCFG(llvmIR);
-    simplifyCFG.Execute();
-
-    for (auto& kv : CFGMap) {
-        auto cfg = kv.second;
-        for (auto [id, bb] : *(cfg->block_map)) {
-            for (auto I : bb->Instruction_list) {
-                I->SetBlockID(id);
+    
+    // 使用BFS从main函数开始遍历,标记所有可达函数
+    std::unordered_set<std::string> reachableFuncs;
+    std::queue<std::string> workList;
+    
+    // 从main函数开始BFS
+    workList.push("main");
+    reachableFuncs.insert("main");
+    
+    while(!workList.empty()) {
+        std::string current = workList.front();
+        workList.pop();
+        
+        // 遍历当前函数调用的所有函数
+        for(const auto& callee : callGraph[current]) {
+            if(reachableFuncs.find(callee) == reachableFuncs.end()) {
+                reachableFuncs.insert(callee);
+                workList.push(callee);
             }
         }
     }
-
-    EliminateUselessFunction();
+    
+    // 清理不可达的函数定义
+    for(const auto& funcName : allFuncs) {
+        if(reachableFuncs.find(funcName) == reachableFuncs.end()) {
+            auto defI = nameToDefMap[funcName];
+            llvmIR->llvm_cfg.erase(defI);
+            llvmIR->function_block_map.erase(defI);
+        }
+    }
 }

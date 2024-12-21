@@ -101,14 +101,12 @@ void Mem2RegPass::Mem2RegNoUseAlloca(CFG *C, std::set<int> &vset) {
         for (auto I : bb->Instruction_list) {
             if (I->GetOpcode() == BasicInstruction::STORE) {
                 auto StoreI = (StoreInstruction *)I;
-                if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
-                    continue;
+                if (StoreI->GetPointer()->GetOperandType() == BasicOperand::REG) {
+                    int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
+                    if (vset.find(v) != vset.end()) {
+                        EraseSet.insert(I);
+                    }
                 }
-                int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
-                if (vset.find(v) == vset.end()) {
-                    continue;
-                }
-                EraseSet.insert(I);
             }
         }
     }
@@ -145,29 +143,31 @@ void Mem2RegPass::Mem2RegUseDefInSameBlock(CFG *C, std::set<int> &vset, int bloc
     // this function is used in InsertPhi
     std::map<int, int> curr_reg_map;    //<alloca reg, current store value regno>
     for (auto I : (*C->block_map)[block_id]->Instruction_list) {
-        if (I->GetOpcode() == BasicInstruction::STORE) {
-            auto StoreI = (StoreInstruction *)I;
-            if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
-                continue;
+        switch (I->GetOpcode()) {
+            case BasicInstruction::STORE: {
+                auto StoreI = (StoreInstruction *)I;
+                if (StoreI->GetPointer()->GetOperandType() == BasicOperand::REG) {
+                    int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
+                    if (vset.find(v) != vset.end()) {
+                        curr_reg_map[v] = ((RegOperand *)(StoreI->GetValue()))->GetRegNo();
+                        EraseSet.insert(I);
+                    }
+                }
+                break;
             }
-            int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
-            if (vset.find(v) == vset.end()) {
-                continue;
+            case BasicInstruction::LOAD: {
+                auto LoadI = (LoadInstruction *)I;
+                if (LoadI->GetPointer()->GetOperandType() == BasicOperand::REG) {
+                    int v = ((RegOperand *)(LoadI->GetPointer()))->GetRegNo();
+                    if (vset.find(v) != vset.end()) {
+                        mem2reg_map[((RegOperand *)(LoadI->GetResult()))->GetRegNo()] = curr_reg_map[v];
+                        EraseSet.insert(I);
+                    }
+                }
+                break;
             }
-            curr_reg_map[v] = ((RegOperand *)(StoreI->GetValue()))->GetRegNo();
-            EraseSet.insert(I);
-        }
-        if (I->GetOpcode() == BasicInstruction::LOAD) {
-            auto LoadI = (LoadInstruction *)I;
-            if (LoadI->GetPointer()->GetOperandType() != BasicOperand::REG) {
-                continue;
-            }
-            int v = ((RegOperand *)(LoadI->GetPointer()))->GetRegNo();
-            if (vset.find(v) == vset.end()) {
-                continue;
-            }
-            mem2reg_map[((RegOperand *)(LoadI->GetResult()))->GetRegNo()] = curr_reg_map[v];
-            EraseSet.insert(I);
+            default:
+                break;
         }
     }
     // TODO("Mem2RegUseDefInSameBlock");
@@ -182,15 +182,13 @@ void Mem2RegPass::Mem2RegOneDefDomAllUses(CFG *C, std::set<int> &vset) {
         for (auto I : bb->Instruction_list) {
             if (I->GetOpcode() == BasicInstruction::STORE) {
                 auto StoreI = (StoreInstruction *)I;
-                if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
-                    continue;
+                if (StoreI->GetPointer()->GetOperandType() == BasicOperand::REG) {
+                    int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
+                    if (vset.find(v) != vset.end()) {
+                        v_result_map[v] = ((RegOperand *)(StoreI->GetValue()))->GetRegNo();
+                        EraseSet.insert(I);
+                    }
                 }
-                int v = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
-                if (vset.find(v) == vset.end()) {
-                    continue;
-                }
-                v_result_map[v] = ((RegOperand *)(StoreI->GetValue()))->GetRegNo();
-                EraseSet.insert(I);
             }
         }
     }
@@ -198,15 +196,13 @@ void Mem2RegPass::Mem2RegOneDefDomAllUses(CFG *C, std::set<int> &vset) {
         for (auto I : bb->Instruction_list) {
             if (I->GetOpcode() == BasicInstruction::LOAD) {
                 auto LoadI = (LoadInstruction *)I;
-                if (LoadI->GetPointer()->GetOperandType() != BasicOperand::REG) {
-                    continue;
+                if (LoadI->GetPointer()->GetOperandType() == BasicOperand::REG) {
+                    int v = ((RegOperand *)(LoadI->GetPointer()))->GetRegNo();
+                    if (vset.find(v) != vset.end()) {
+                        mem2reg_map[((RegOperand *)(LoadI->GetResult()))->GetRegNo()] = v_result_map[v];
+                        EraseSet.insert(I);
+                    }
                 }
-                int v = ((RegOperand *)(LoadI->GetPointer()))->GetRegNo();
-                if (vset.find(v) == vset.end()) {
-                    continue;
-                }
-                mem2reg_map[((RegOperand *)(LoadI->GetResult()))->GetRegNo()] = v_result_map[v];
-                EraseSet.insert(I);
             }
         }
     }
@@ -227,21 +223,26 @@ void Mem2RegPass::InsertPhi(CFG *C) {
     // 获取每个变量的定义和使用信息
     for (auto [id, BB] : *C->block_map) {
         for (auto I : BB->Instruction_list) {
-            if (I->GetOpcode() == BasicInstruction::STORE) {
-                auto StoreI = (StoreInstruction *)I;
-                if (StoreI->GetPointer()->GetOperandType() == BasicOperand::GLOBAL) {
-                    continue;
+            switch (I->GetOpcode()) {
+                case BasicInstruction::STORE: {
+                    auto StoreI = (StoreInstruction *)I;
+                    if (StoreI->GetPointer()->GetOperandType() != BasicOperand::GLOBAL) {
+                        int ptr_reg = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
+                        defs[ptr_reg].insert(id);
+                        def_num[ptr_reg]++;
+                    }
+                    break;
                 }
-                int ptr_reg = ((RegOperand *)(StoreI->GetPointer()))->GetRegNo();
-                defs[ptr_reg].insert(id);
-                def_num[ptr_reg]++;
-            } else if (I->GetOpcode() == BasicInstruction::LOAD) {
-                auto LoadI = (LoadInstruction *)I;
-                if (LoadI->GetPointer()->GetOperandType() == BasicOperand::GLOBAL) {
-                    continue;
+                case BasicInstruction::LOAD: {
+                    auto LoadI = (LoadInstruction *)I;
+                    if (LoadI->GetPointer()->GetOperandType() != BasicOperand::GLOBAL) {
+                        int ptr_reg = ((RegOperand *)(LoadI->GetPointer()))->GetRegNo();
+                        uses[ptr_reg].insert(id);
+                    }
+                    break;
                 }
-                int ptr_reg = ((RegOperand *)(LoadI->GetPointer()))->GetRegNo();
-                uses[ptr_reg].insert(id);
+                default:
+                    break;
             }
         }
     }
@@ -249,11 +250,9 @@ void Mem2RegPass::InsertPhi(CFG *C) {
     // 遍历 entry 基本块中的 alloca 指令，判断是否可以提升
     LLVMBlock entry_BB = (*C->block_map)[0];
     for (auto I : entry_BB->Instruction_list) {
-        if (I->GetOpcode() != BasicInstruction::ALLOCA) {
-            continue;
+        if (I->GetOpcode() == BasicInstruction::ALLOCA) {
+            IsPromotable(C, I);
         }
-
-        IsPromotable(C, I);
     }
 
     // 处理不同情况
@@ -285,32 +284,39 @@ void Mem2RegPass::InsertPhi(CFG *C) {
         }
     }
 
-    // TODO("InsertPhi"); 
+    // TODO("InsertPhi");
 }
 
 int in_allocas(std::set<int> &S, Instruction I) {
-    if (I->GetOpcode() == BasicInstruction::LOAD) {
-        auto LoadI = (LoadInstruction *)I;
-        if (LoadI->GetPointer()->GetOperandType() != BasicOperand::REG) {
-            return -1;
+    switch (I->GetOpcode()) {
+        case BasicInstruction::LOAD: {
+            auto LoadI = (LoadInstruction *)I;
+            if (LoadI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+                return -1;
+            }
+            int pointer = ((RegOperand *)LoadI->GetPointer())->GetRegNo();
+            if (S.find(pointer) != S.end()) {
+                return pointer;
+            }
+            break;
         }
-        int pointer = ((RegOperand *)LoadI->GetPointer())->GetRegNo();
-        if (S.find(pointer) != S.end()) {
-            return pointer;
+        case BasicInstruction::STORE: {
+            auto StoreI = (StoreInstruction *)I;
+            if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
+                return -1;
+            }
+            int pointer = ((RegOperand *)StoreI->GetPointer())->GetRegNo();
+            if (S.find(pointer) != S.end()) {
+                return pointer;
+            }
+            break;
         }
-    }
-    if (I->GetOpcode() == BasicInstruction::STORE) {
-        auto StoreI = (StoreInstruction *)I;
-        if (StoreI->GetPointer()->GetOperandType() != BasicOperand::REG) {
-            return -1;
-        }
-        int pointer = ((RegOperand *)StoreI->GetPointer())->GetRegNo();
-        if (S.find(pointer) != S.end()) {
-            return pointer;
-        }
+        default:
+            break;
     }
     return -1;
 }
+
 
 void Mem2RegPass::VarRename(CFG *C) {
     // VarRename过程: 
@@ -336,32 +342,38 @@ void Mem2RegPass::VarRename(CFG *C) {
 
         // 先对当前BB中的指令进行处理
         for (auto I : (*C->block_map)[BB]->Instruction_list) {
-            if (I->GetOpcode() == BasicInstruction::LOAD) {
-                auto LoadI = (LoadInstruction *)I;
-                int v = in_allocas(common_allocas, I);
-                if (v >= 0) {
-                    // Load来自common_allocas变量，用IncomingVals[v]替换
-                    EraseSet.insert(LoadI);
-                    mem2reg_map[((RegOperand *)LoadI->GetResult())->GetRegNo()] = IncomingVals[v];
+            switch (I->GetOpcode()) {
+                case BasicInstruction::LOAD: {
+                    auto LoadI = (LoadInstruction *)I;
+                    int v = in_allocas(common_allocas, I);
+                    if (v >= 0) {
+                        EraseSet.insert(LoadI);
+                        mem2reg_map[((RegOperand *)LoadI->GetResult())->GetRegNo()] = IncomingVals[v];
+                    }
+                    break;
                 }
-            } else if (I->GetOpcode() == BasicInstruction::STORE) {
-                auto StoreI = (StoreInstruction *)I;
-                int v = in_allocas(common_allocas, I);
-                if (v >= 0) {
-                    // store到common_allocas变量，更新IncomingVals[v]
-                    EraseSet.insert(StoreI);
-                    IncomingVals[v] = ((RegOperand *)StoreI->GetValue())->GetRegNo();
+                case BasicInstruction::STORE: {
+                    auto StoreI = (StoreInstruction *)I;
+                    int v = in_allocas(common_allocas, I);
+                    if (v >= 0) {
+                        EraseSet.insert(StoreI);
+                        IncomingVals[v] = ((RegOperand *)StoreI->GetValue())->GetRegNo();
+                    }
+                    break;
                 }
-            } else if (I->GetOpcode() == BasicInstruction::PHI) {
-                auto PhiI = (PhiInstruction *)I;
-                if (EraseSet.find(PhiI) != EraseSet.end()) {
-                    continue;
+                case BasicInstruction::PHI: {
+                    auto PhiI = (PhiInstruction *)I;
+                    if (EraseSet.find(PhiI) != EraseSet.end()) {
+                        continue;
+                    }
+                    auto it = phi_map.find(PhiI);
+                    if (it != phi_map.end()) {
+                        IncomingVals[it->second] = ((RegOperand *)PhiI->GetResultReg())->GetRegNo();
+                    }
+                    break;
                 }
-                auto it = phi_map.find(PhiI);
-                if (it != phi_map.end()) {
-                    // 当前phi属于alloca变量
-                    IncomingVals[it->second] = ((RegOperand *)PhiI->GetResultReg())->GetRegNo();
-                }
+                default:
+                    break;
             }
         }
 
@@ -444,16 +456,21 @@ void Mem2RegInit(CFG *C) {
             if (I->GetOpcode() == BasicInstruction::STORE) {
                 auto StoreI = (StoreInstruction *)I;
                 auto val = StoreI->GetValue();
-                if (val->GetOperandType() == BasicOperand::IMMI32) {
-                    auto ArithI =
-                    new ArithmeticInstruction(BasicInstruction::ADD, BasicInstruction::I32, val, new ImmI32Operand(0), GetNewRegOperand(++C->max_reg));
-                    bb->Instruction_list.push_back(ArithI);
-                    StoreI->SetValue(GetNewRegOperand(C->max_reg));
-                } else if (val->GetOperandType() == BasicOperand::IMMF32) {
-                    auto ArithI =
-                    new ArithmeticInstruction(BasicInstruction::FADD, BasicInstruction::FLOAT32, val, new ImmF32Operand(0), GetNewRegOperand(++C->max_reg));
-                    bb->Instruction_list.push_back(ArithI);
-                    StoreI->SetValue(GetNewRegOperand(C->max_reg));
+                switch (val->GetOperandType()) {
+                    case BasicOperand::IMMI32: {
+                        auto ArithI = new ArithmeticInstruction(BasicInstruction::ADD, BasicInstruction::I32, val, new ImmI32Operand(0), GetNewRegOperand(++C->max_reg));
+                        bb->Instruction_list.push_back(ArithI);
+                        StoreI->SetValue(GetNewRegOperand(C->max_reg));
+                        break;
+                    }
+                    case BasicOperand::IMMF32: {
+                        auto ArithI = new ArithmeticInstruction(BasicInstruction::FADD, BasicInstruction::FLOAT32, val, new ImmF32Operand(0), GetNewRegOperand(++C->max_reg));
+                        bb->Instruction_list.push_back(ArithI);
+                        StoreI->SetValue(GetNewRegOperand(C->max_reg));
+                        break;
+                    }
+                    default:
+                        break;
                 }
             }
             bb->Instruction_list.push_back(I);
