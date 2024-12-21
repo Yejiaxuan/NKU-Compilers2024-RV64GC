@@ -178,13 +178,11 @@ int main(int argc, char **argv) {
         
         (Mem2RegPass(&llvmIR, &dom)).Execute();
 
-        SimplifyCFGPass(&llvmIR).Execute();
-
-        SCCPPass(&llvmIR, &dom).Execute();
+        SCCPPass(&llvmIR).Execute();
         
         SimpleDCEPass(&llvmIR).Execute();
-
-	ADCEPass(&llvmIR).Execute();
+        
+        ADCEPass(&llvmIR).Execute();
 
         llvmIR.BuildFunctionInfo();
 

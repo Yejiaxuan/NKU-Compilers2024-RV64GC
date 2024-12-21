@@ -3,7 +3,9 @@
 #include "../../include/cfg.h"
 #include "../analysis/dominator_tree.h"
 #include <assert.h>
+#include <unordered_set>
 
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/optimize/propagating/lattice.h line4-line34
 class ConstLattice {
 public:
     enum LatticeStatus {
@@ -68,7 +70,7 @@ private:
 
 public:
     // 构造函数
-    SCCPPass(LLVMIR *IR, DomAnalysis *dom) : IRPass(IR) {}
+    SCCPPass(LLVMIR *IR) : IRPass(IR) {}
     
     // 执行SCCP优化
     void Execute();
