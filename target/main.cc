@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
         
         SimpleDCEPass(&llvmIR).Execute();
 
-	    //ADCEPass(&llvmIR, &dom).Execute();
+	ADCEPass(&llvmIR).Execute();
 
         llvmIR.BuildFunctionInfo();
 
