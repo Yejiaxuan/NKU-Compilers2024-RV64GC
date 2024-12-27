@@ -1,3 +1,4 @@
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/optimize/function/simple_function.cc line1-line419
 #include "tco.h"
 
 void TCOPass::MakeFunctionOneExit(CFG *C) {
@@ -113,7 +114,7 @@ void TCOPass::RetMotion(CFG *C) {
     }
 }
 
-bool TCOPass::TailRecursiveEliminateCheck(CFG *C) {
+bool TCOPass::TailRecursiveEliminateCheck(CFG* C) {
     auto FuncdefI = C->function_def;
     if (FuncdefI->GetFormalSize() > 5) {
         return false;
@@ -171,7 +172,7 @@ void TCOPass::TailRecursiveEliminate(CFG* C) {
     }
     auto FuncdefI = C->function_def;
     auto bb0 = (*C->block_map->begin()).second;
-    bool NeedtoInsertPTR = 0;
+    bool NeedtoInsertPTR = false;
     std::deque<Instruction> StoreDeque;
     std::deque<Instruction> AllocaDeque; 
     std::set<Instruction> EraseSet;
@@ -199,7 +200,7 @@ void TCOPass::TailRecursiveEliminate(CFG* C) {
                         continue;
                     }
                     if (FuncdefI->formals[i] == BasicInstruction::PTR) {
-                        NeedtoInsertPTR = 1;
+                        NeedtoInsertPTR = true;
                         if (PtrUsed.find(i) == PtrUsed.end()) {
                             auto PtrReg = GetNewRegOperand(++C->max_reg);
                             PtrUsed[i] = PtrReg;
@@ -222,7 +223,7 @@ void TCOPass::TailRecursiveEliminate(CFG* C) {
             bb->Instruction_list.clear();
             for (auto I : tmp_Instruction_list) {
                 auto ResultOperands = I->GetNonResultOperands();
-                bool NeedtoUpdate = 0;
+                bool NeedtoUpdate = false;
                 if (id != 0 && NeedtoInsertPTR && !ResultOperands.empty()) {
                     for (u_int32_t i = 0; i < ResultOperands.size(); i++) {
                         auto ResultReg = ResultOperands[i];
@@ -232,7 +233,7 @@ void TCOPass::TailRecursiveEliminate(CFG* C) {
                             }
                             auto DefReg = FuncdefI->formals_reg[j];
                             if (ResultReg->GetFullName() == DefReg->GetFullName()) {
-                                NeedtoUpdate = 1;
+                                NeedtoUpdate = true;
                                 auto PtrReg = GetNewRegOperand(++C->max_reg);
                                 bb->InsertInstruction(1, new LoadInstruction(BasicInstruction::PTR, PtrUsed[j], PtrReg));
                                 ResultOperands[i] = PtrReg;
@@ -252,9 +253,6 @@ void TCOPass::TailRecursiveEliminate(CFG* C) {
     while (!StoreDeque.empty()) {
         auto I = StoreDeque.back();
         bb0->InsertInstruction(0, I);
-        StoreDeque.pop_back();
-    }
-    while (!StoreDeque.empty()) {
         StoreDeque.pop_back();
     }
     for (auto *it : AllocaDeque) {
@@ -328,7 +326,7 @@ void TCOPass::TailRecursiveEliminate(CFG* C) {
 }
 
 void TCOPass::Execute() {
-    for (auto [defI, cfg] : llvmIR->llvm_cfg) {
+    for (auto [_, cfg] : llvmIR->llvm_cfg) {
         RetMotion(cfg);
         TailRecursiveEliminate(cfg);
         MakeFunctionOneExit(cfg);
