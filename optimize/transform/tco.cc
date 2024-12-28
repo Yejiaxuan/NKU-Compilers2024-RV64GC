@@ -1,4 +1,3 @@
-// Reference: https://github.com/yuhuifishash/SysY/blob/master/optimize/function/simple_function.cc line1-line419
 #include "tco.h"
 
 void TCOPass::MakeFunctionOneExit(CFG *C) {
