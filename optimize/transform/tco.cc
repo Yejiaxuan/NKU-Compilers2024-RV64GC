@@ -114,221 +114,168 @@ void TCOPass::RetMotion(CFG *C) {
     }
 }
 
-bool TCOPass::TailRecursiveEliminateCheck(CFG* C) {
-    auto FuncdefI = C->function_def;
-    if (FuncdefI->GetFormalSize() > 5) {
-        return false;
-    }
-    auto bb0 = (*C->block_map->begin()).second;
-    int AllocaRegCnt = 0;
-    std::unordered_map<int, int> AllocaReg;
-    std::unordered_map<int, int> GEPMap;
-    for (auto I : bb0->Instruction_list) {
-        if (I->GetOpcode() != BasicInstruction::ALLOCA) {
+// 尾递归转循环优化的主函数
+void TCOPass::TailRecursionToLoop(CFG *cfg, FuncDefInstruction defI) {
+    std::string func_name = defI->GetFunctionName();
+
+    for (auto &[block_id, block] : *(cfg->block_map)) {
+        auto &instr_list = block->Instruction_list;
+
+        if (instr_list.size() < 2)
+            continue;
+
+        // 获取倒数第二和倒数第一条指令
+        auto last_instr = instr_list.back();
+        auto second_last_instr = *(instr_list.rbegin() + 1);
+
+        // 1. 检查最后一条指令是否是 ret
+        if (last_instr->GetOpcode() != BasicInstruction::RET) {
             continue;
         }
-        auto AllocaI = (AllocaInstruction *)I;
-        if (AllocaI->GetDims().empty()) {
+        std::cout << 1 << " " << func_name << " " << block_id << std::endl;
+
+        // 2. 检查倒数第二条指令是否是 call
+        if (second_last_instr->GetOpcode() != BasicInstruction::CALL) {
             continue;
         }
-        AllocaReg[AllocaI->GetResultRegNo()] = ++AllocaRegCnt;
-    }
+        std::cout << 2 << std::endl;
 
-    if (!AllocaRegCnt) {
-        return true;
-    }
-    for (auto [id, bb] : *C->block_map) {
-        for (auto I : bb->Instruction_list) {
-            if (I->GetOpcode() != BasicInstruction::GETELEMENTPTR && I->GetOpcode() != BasicInstruction::CALL) {
-                continue;
-            }
+        CallInstruction *call_instr = static_cast<CallInstruction *>(second_last_instr);
 
-            if (I->GetOpcode() == BasicInstruction::GETELEMENTPTR) {
-                auto GetelementptrI = (GetElementptrInstruction *)I;
-                auto PtrReg = ((RegOperand *)GetelementptrI->GetPtrVal())->GetRegNo();
-                auto ResultReg = GetelementptrI->GetResultRegNo();
-                if (PtrReg == 0 || AllocaReg.find(PtrReg) == AllocaReg.end()) {
-                    continue;
-                }
-                GEPMap[ResultReg] = PtrReg;
-            } else {
-                auto CallI = (CallInstruction *)I;
-                for (auto args : CallI->GetParameterList()) {
-                    auto args_regno = ((RegOperand *)args.second)->GetRegNo();
-                    if (GEPMap.find(args_regno) != GEPMap.end()) {
-                        return false;
-                    }
-                }
-            }
+        // 3. 确认调用的函数是当前函数自身
+        if (call_instr->GetFunctionName() != func_name) {
+            // std::cout << call_instr->GetFunctionName() << std::endl;
+            // std::cout << func_name << std::endl;
+            continue;
+        }
+        std::cout << 3 << std::endl;
+
+        // 4. 确认 ret 返回的值是 call 指令的结果
+        RetInstruction *ret_instr = static_cast<RetInstruction *>(last_instr);
+        if (ret_instr->GetRetVal() != call_instr->DefinesResult()) {
+            continue;
+        }
+
+        std::cout << "Tail recursion detected in block " << block_id << " " << func_name << std::endl;
+
+        // 转换尾递归调用为循环
+        ConvertTailRecursionToLoop(cfg, block, call_instr, defI);
+    }
+    if(defI->isTCO==true){
+        auto &blocks = *(cfg->block_map);
+        auto &entry_block = blocks[1];    // 函数入口基本块
+        auto &entry_instr_list = entry_block->Instruction_list;
+        for (size_t i = 0; i < defI->formals.size(); ++i) {
+            entry_instr_list.insert(entry_instr_list.begin(), new PhiInstruction(defI->formals[i], defI->phi_result_list[i], defI->phi_list_list[i]));
         }
     }
-    return true;
 }
 
-void TCOPass::TailRecursiveEliminate(CFG* C) {
-    bool TRECheck = TailRecursiveEliminateCheck(C);
-    if (!TRECheck) {
-        return;
-    }
-    auto FuncdefI = C->function_def;
-    auto bb0 = (*C->block_map->begin()).second;
-    bool NeedtoInsertPTR = false;
-    std::deque<Instruction> StoreDeque;
-    std::deque<Instruction> AllocaDeque; 
-    std::set<Instruction> EraseSet;
-    std::unordered_map<int, RegOperand*> PtrUsed;
-    for (auto [id, bb] : *C->block_map) {
-        if (bb->Instruction_list.back()->GetOpcode() != BasicInstruction::RET) {
-            continue;
+// 执行尾递归到循环的转换
+void TCOPass::ConvertTailRecursionToLoop(CFG *cfg, BasicBlock *block, CallInstruction *call_instr,
+                                         FuncDefInstruction defI) {
+
+    // 1. 获取入口基本块及其参数
+    auto &blocks = *(cfg->block_map);
+    auto &entry_block = blocks[1];    // 函数入口基本块
+    auto &entry_instr_list = entry_block->Instruction_list;
+    auto &first_block = blocks[0];
+    auto &first_instr_list = first_block->Instruction_list;
+
+    if (defI->isTCO == false) {
+        //defI->isTCO = true;
+
+        // std::cout << 666 << std::endl;
+
+        for (auto it = first_instr_list.rbegin() + 1; it != first_instr_list.rend(); ++it) {
+            entry_instr_list.push_front(*it);    // 注意这里是 *it，因为 it 是迭代器
         }
-        auto retI = (RetInstruction *)bb->Instruction_list.back();
-        for (auto I : bb->Instruction_list) {
-            if (I->GetOpcode() != BasicInstruction::CALL) {
-                continue;
-            }
-            auto callI = (CallInstruction *)I;
-            if (callI->GetFunctionName() != FuncdefI->GetFunctionName()) {
-                continue;
-            }
-            bool opt1 = callI->GetResult() != NULL && callI->GetResult()->GetFullName() == retI->GetRetVal()->GetFullName();
-            bool opt2 = callI->GetResult() == NULL && retI->GetType() == BasicInstruction::VOID;
-            if (opt1 || opt2) {
-                auto list_size = callI->GetParameterList().size();
-                for (auto i = 0; i < list_size; i++) {
-                    auto callI_reg = (RegOperand *)(callI->GetParameterList()[i].second);
-                    if (callI_reg->GetRegNo() == i) {
-                        continue;
-                    }
-                    if (FuncdefI->formals[i] == BasicInstruction::PTR) {
-                        NeedtoInsertPTR = true;
-                        if (PtrUsed.find(i) == PtrUsed.end()) {
-                            auto PtrReg = GetNewRegOperand(++C->max_reg);
-                            PtrUsed[i] = PtrReg;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if (NeedtoInsertPTR) {
-        for (u_int32_t i = 0; i < FuncdefI->GetFormalSize(); ++i) {
-            if (FuncdefI->formals[i] == BasicInstruction::PTR && PtrUsed.find(i) != PtrUsed.end()) {
-                auto PtrReg = PtrUsed[i];
-                AllocaDeque.push_back(new AllocaInstruction(BasicInstruction::PTR, PtrReg));
-                StoreDeque.push_back(new StoreInstruction(BasicInstruction::PTR, PtrReg, FuncdefI->formals_reg[i]));
-            }
-        }
-        for (auto [id, bb] : *C->block_map) {
-            auto tmp_Instruction_list = bb->Instruction_list;
-            bb->Instruction_list.clear();
-            for (auto I : tmp_Instruction_list) {
-                auto ResultOperands = I->GetNonResultOperands();
-                bool NeedtoUpdate = false;
-                if (id != 0 && NeedtoInsertPTR && !ResultOperands.empty()) {
-                    for (u_int32_t i = 0; i < ResultOperands.size(); i++) {
-                        auto ResultReg = ResultOperands[i];
-                        for (u_int32_t j = 0; j < FuncdefI->formals_reg.size(); j++) {
-                            if (PtrUsed.find(j) == PtrUsed.end()) {
-                                continue;
-                            }
-                            auto DefReg = FuncdefI->formals_reg[j];
-                            if (ResultReg->GetFullName() == DefReg->GetFullName()) {
-                                NeedtoUpdate = true;
-                                auto PtrReg = GetNewRegOperand(++C->max_reg);
-                                bb->InsertInstruction(1, new LoadInstruction(BasicInstruction::PTR, PtrUsed[j], PtrReg));
-                                ResultOperands[i] = PtrReg;
-                                break;
-                            }
-                        }
-                    }
-                    if (NeedtoUpdate) {
-                        I->SetNonResultOperands(ResultOperands);
-                    }
-                }
-                bb->InsertInstruction(1, I);
-            }
+        while (first_instr_list.size() > 1) {
+            first_instr_list.pop_front();    // 弹出第一个元素
         }
     }
 
-    while (!StoreDeque.empty()) {
-        auto I = StoreDeque.back();
-        bb0->InsertInstruction(0, I);
-        StoreDeque.pop_back();
-    }
-    for (auto *it : AllocaDeque) {
-        bb0->InsertInstruction(0, it);
-    }
-    while (!AllocaDeque.empty()) {
-        AllocaDeque.pop_back();
-    }
-    for (auto [id, bb] : *C->block_map) {
-        if (bb->Instruction_list.back()->GetOpcode() != BasicInstruction::RET || bb->Instruction_list.size() <= 1) {
-            continue;
+    // std::cout << 777 << std::endl;
+
+    // // 2. 创建 phi 指令，合并初始参数值与新的值
+
+    auto args = call_instr->GetParameterList();
+
+    // std::vector<Operand> phi_operands;
+    for (size_t i = 0; i < defI->formals.size(); ++i) {
+        Operand param = defI->formals_reg[i];              // 原始参数寄存器
+        //Operand phi = GetNewRegOperand(++cfg->max_reg);    // 创建新的寄存器
+
+        // Operand newparam = GetNewRegOperand(++cfg->max_reg);
+        // phi_operands.push_back(newparam);
+
+        std::vector<std::pair<Operand, Operand>> phi_list;
+        phi_list.push_back({GetNewLabelOperand(0), param});
+        int block_id = block->block_id;
+        phi_list.push_back({GetNewLabelOperand(block_id), args[i].second});
+
+        //std::cout << 777 << std::endl;
+
+        if (defI->isTCO == false) {
+            //defI->isTCO = true;
+
+            defI->phi_list_list.resize(defI->formals.size());
+            defI->phi_result_list.resize(defI->formals.size());
+
+            defI->phi_list_list[i].push_back({GetNewLabelOperand(0), param});
+
+            Operand phi = GetNewRegOperand(++cfg->max_reg);
+            defI->phi_result_list[i]=phi;
+            
+            //std::cout << 777 << std::endl;
         }
-        auto retI = (RetInstruction *)bb->Instruction_list.back();
-        auto I = *(--(--bb->Instruction_list.end()));
-        if (I->GetOpcode() != BasicInstruction::CALL) {
-            continue;
-        }
-        auto callI = (CallInstruction *)I;
-        if (callI->GetFunctionName() != FuncdefI->GetFunctionName()) {
-            continue;
-        }
-        bool opt1 = callI->GetResult() != NULL && callI->GetResult()->GetFullName() == retI->GetRetVal()->GetFullName();
-        bool opt2 = callI->GetResult() == NULL && retI->GetType() == BasicInstruction::VOID;
-        if (opt1 || opt2) {
-            EraseSet.insert(callI);
-            EraseSet.insert(retI);
-            auto list_size = callI->GetParameterList().size();
-            auto bb0_it = --bb0->Instruction_list.end();
-            auto bb0_ptr_it = bb0->Instruction_list.begin();
-            while ((*bb0_ptr_it)->GetOpcode() == BasicInstruction::ALLOCA) {
-                bb0_ptr_it++;
+        defI->phi_list_list[i].push_back({GetNewLabelOperand(block_id), args[i].second});
+        //defI->phi_result_list[i]=phi;
+
+        //std::cout << 777 << std::endl;
+
+        for (auto &[block_id, block] : blocks) {
+            // 获取当前基本块的指令序列
+            auto &instr_list = block->Instruction_list;
+
+            // 遍历当前块的指令序列
+            for (auto &instr : instr_list) {
+                instr->resetOperand(param, defI->phi_result_list[i]);
             }
-            for (auto i = 0; i < list_size; i++) {
-                auto callI_type = callI->GetParameterList()[i].first;
-                auto callI_reg = (RegOperand *)(callI->GetParameterList()[i].second);
-                if (callI_reg->GetRegNo() == i || (callI_type == BasicInstruction::PTR && PtrUsed.find(i) == PtrUsed.end())) {
-                    continue;
-                }
-                Instruction allocaI;
-                if (callI->GetParameterList()[i].first == BasicInstruction::PTR) {
-                    bb0_ptr_it--;
-                    allocaI = *bb0_ptr_it;
-                } else {
-                    bb0_it--;
-                    allocaI = *bb0_it;
-                    while (allocaI->GetOpcode() != BasicInstruction::ALLOCA) {
-                        bb0_it--;
-                        allocaI = *bb0_it;
-                    }
-                }
-                auto storeI = new StoreInstruction(callI->GetParameterList()[i].first, allocaI->GetResultReg(),
-                                                   callI->GetParameterList()[i].second);
-                bb->InsertInstruction(1, storeI);
-            }
-            bb->InsertInstruction(1, new BrUncondInstruction(GetNewLabelOperand(1)));
         }
+
+        //std::cout << 777 << std::endl;
+
+        // 插入 phi 指令：合并初始参数值
+        //entry_instr_list.insert(entry_instr_list.begin(), new PhiInstruction(defI->formals[i], phi, phi_list));
     }
-    for (auto [id, bb] : *C->block_map) {
-        auto tmp_Instruction_list = bb->Instruction_list;
-        bb->Instruction_list.clear();
-        for (auto I : tmp_Instruction_list) {
-            if (EraseSet.find(I) != EraseSet.end()) {
-                continue;
-            }
-            bb->InsertInstruction(1, I);
-        }
-    }
-    EraseSet.clear();
-    PtrUsed.clear();
-    C->BuildCFG();
+
+    // // 3. 替换尾递归调用为参数更新
+    auto &instr_list = block->Instruction_list;
+    instr_list.pop_back();    // 删除尾递归调用指令
+    instr_list.pop_back();
+
+    // // auto args = call_instr->GetParameterList(); // 获取调用参数
+    // // for (size_t i = 0; i < args.size(); ++i) {
+    // //     Operand updated_value = args[i].second; // 尾递归参数的值
+    // //     Operand phi_reg = phi_operands[i];      // 对应的 phi 指令的寄存器
+    // //     BasicInstruction::LLVMType type = args[i].first;
+
+    // //     // 更新参数值：替换为赋值或算术指令
+    // //     auto move_instr = new ArithmeticInstruction(BasicInstruction::ADD, type, updated_value, new
+    // ImmI32Operand(0), phi_reg);
+    // //     instr_list.push_back(move_instr);
+    // // }
+
+    // // 4. 插入跳转指令回入口基本块
+    instr_list.push_back(new BrUncondInstruction(GetNewLabelOperand(1)));
+    defI->isTCO = true;
 }
 
 void TCOPass::Execute() {
     for (auto [_, cfg] : llvmIR->llvm_cfg) {
         RetMotion(cfg);
-        TailRecursiveEliminate(cfg);
+        TailRecursionToLoop(cfg, _);
         MakeFunctionOneExit(cfg);
     }
 }
