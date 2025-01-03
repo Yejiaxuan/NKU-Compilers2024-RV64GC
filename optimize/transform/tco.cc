@@ -1,13 +1,20 @@
 #include "tco.h"
 
 void TCOPass::MakeFunctionOneExit(CFG *C) {
+    std::cout << "[MakeFunctionOneExit] 开始执行，准备合并多个返回块..." << std::endl;
+
     std::queue<LLVMBlock> exitQueue;
     BasicInstruction::LLVMType retInstrType = BasicInstruction::VOID;
     int retBlockCount = 0;
 
+    // 遍历所有基本块，收集含有返回指令的块
     for (auto &pairBlock : *(C->block_map)) {
         auto &bbId = pairBlock.first;
         auto &basicBlk = pairBlock.second;
+
+        if (basicBlk->Instruction_list.empty()) {
+            continue;
+        }
 
         auto lastInst = basicBlk->Instruction_list.back();
         if (lastInst->GetOpcode() != BasicInstruction::RET) {
@@ -16,12 +23,18 @@ void TCOPass::MakeFunctionOneExit(CFG *C) {
 
         retBlockCount++;
         auto *returnInstr = dynamic_cast<RetInstruction *>(lastInst);
+        if (!returnInstr) {
+            std::cout << "[MakeFunctionOneExit] 警告：无法动态转换为 RetInstruction，跳过" << std::endl;
+            continue;
+        }
+
+        std::cout << "[MakeFunctionOneExit] 检测到返回指令所在块 ID: " << bbId << std::endl;
         retInstrType = returnInstr->GetType();
         exitQueue.push(basicBlk);
     }
 
     if (retBlockCount == 0) {
-        std::cout << "[MakeFunctionOneExit] 未检测到任何返回块，创建新块..." << std::endl;
+        std::cout << "[MakeFunctionOneExit] 未检测到任何返回块，创建新块并插入默认返回..." << std::endl;
         C->block_map->clear();
         C->max_label = -1;
         C->max_reg = -1;
@@ -29,67 +42,94 @@ void TCOPass::MakeFunctionOneExit(CFG *C) {
         auto newBlock = C->NewBlock();
         switch (C->function_def->GetReturnType()) {
             case BasicInstruction::VOID:
+                std::cout << "[MakeFunctionOneExit] 函数返回类型为 VOID，插入 ret void" << std::endl;
                 newBlock->InsertInstruction(1, new RetInstruction(BasicInstruction::VOID, nullptr));
                 break;
             case BasicInstruction::I32:
+                std::cout << "[MakeFunctionOneExit] 函数返回类型为 I32，插入 ret i32 0" << std::endl;
                 newBlock->InsertInstruction(1, new RetInstruction(BasicInstruction::I32, new ImmI32Operand(0)));
                 break;
             case BasicInstruction::FLOAT32:
+                std::cout << "[MakeFunctionOneExit] 函数返回类型为 FLOAT32，插入 ret float 0" << std::endl;
                 newBlock->InsertInstruction(1, new RetInstruction(BasicInstruction::FLOAT32, new ImmF32Operand(0)));
                 break;
             default:
+                std::cout << "[MakeFunctionOneExit] 错误：未预期的返回类型！" << std::endl;
                 ERROR("Unexpected Type in MakeFunctionOneExit");
                 break;
         }
         C->ret_block = newBlock;
+        std::cout << "[MakeFunctionOneExit] 新返回块已创建并构建 CFG" << std::endl;
         C->BuildCFG();
         return;
     }
 
     if (retBlockCount == 1) {
-        std::cout << "[MakeFunctionOneExit] 只找到 1 个返回块，使用它作为唯一的 ret_block" << std::endl;
+        std::cout << "[MakeFunctionOneExit] 只找到 1 个返回块，无需合并，直接使用它作为唯一的 ret_block" << std::endl;
         C->ret_block = exitQueue.front();
         exitQueue.pop();
         return;
     }
 
-    std::cout << "[MakeFunctionOneExit] 检测到多个返回块，需要合并..." << std::endl;
+    std::cout << "[MakeFunctionOneExit] 检测到多个返回块，共计 " << retBlockCount << " 个，需要合并..." << std::endl;
     auto mergedRetBlock = C->NewBlock();
 
+    // 如果返回类型不是 VOID，需要生成临时寄存器来合并返回值
     if (retInstrType != BasicInstruction::VOID) {
+        std::cout << "[MakeFunctionOneExit] 返回类型非 VOID，为所有返回块创建统一的合并返回值处理..." << std::endl;
         auto regRetPtr = GetNewRegOperand(++C->max_reg);
         auto regFinalRet = GetNewRegOperand(++C->max_reg);
 
+        // 在第一个基本块的前端插入 Alloca，用于存储返回值
         auto &firstBlockInMap = C->block_map->begin()->second;
         auto *allocaInst = new AllocaInstruction(retInstrType, regRetPtr);
+        std::cout << "[MakeFunctionOneExit] 在块 " << C->block_map->begin()->first 
+                  << " 中插入 AllocaInstruction，以存储返回值" << std::endl;
         firstBlockInMap->InsertInstruction(0, allocaInst);
 
+        // 将各个返回块的最终返回值写入同一个地址，然后跳转到 mergedRetBlock
         while (!exitQueue.empty()) {
             auto curBB = exitQueue.front();
             exitQueue.pop();
             auto *originRet = dynamic_cast<RetInstruction *>(curBB->Instruction_list.back());
+            if (!originRet) {
+                std::cout << "[MakeFunctionOneExit] 警告：无法转换为 RetInstruction，跳过" << std::endl;
+                continue;
+            }
             curBB->Instruction_list.pop_back();
             curBB->InsertInstruction(1, new StoreInstruction(retInstrType, regRetPtr, originRet->GetRetVal()));
             curBB->InsertInstruction(1, new BrUncondInstruction(GetNewLabelOperand(mergedRetBlock->block_id)));
+            std::cout << "[MakeFunctionOneExit] 块 " << curBB->block_id 
+                      << " 已重定向到 mergedRetBlock" << std::endl;
         }
 
+        // 在合并块中从同一地址读出，然后统一 ret
         mergedRetBlock->InsertInstruction(1, new LoadInstruction(retInstrType, regRetPtr, regFinalRet));
         mergedRetBlock->InsertInstruction(1, new RetInstruction(retInstrType, regFinalRet));
+        std::cout << "[MakeFunctionOneExit] 已在合并块插入统一返回逻辑" << std::endl;
     } else {
+        // 返回类型为 VOID，只需要将所有返回指令改为无条件跳转到合并块
+        std::cout << "[MakeFunctionOneExit] 返回类型为 VOID，直接跳转合并" << std::endl;
         while (!exitQueue.empty()) {
             auto curBB = exitQueue.front();
             exitQueue.pop();
             curBB->Instruction_list.pop_back();
             curBB->InsertInstruction(1, new BrUncondInstruction(GetNewLabelOperand(mergedRetBlock->block_id)));
+            std::cout << "[MakeFunctionOneExit] 块 " << curBB->block_id 
+                      << " 重定向到 mergedRetBlock" << std::endl;
         }
         mergedRetBlock->InsertInstruction(1, new RetInstruction(BasicInstruction::VOID, nullptr));
     }
 
     C->ret_block = mergedRetBlock;
+    std::cout << "[MakeFunctionOneExit] 合并返回块设置完成，正在重建 CFG..." << std::endl;
     C->BuildCFG();
+    std::cout << "[MakeFunctionOneExit] CFG 重建完成" << std::endl;
 }
 
 void TCOPass::RetMotion(CFG *C) {
+    std::cout << "[RetMotion] 开始执行 RetMotion 优化..." << std::endl;
+
     if (C->function_def->GetReturnType() != BasicInstruction::VOID) {
         std::cout << "[RetMotion] 跳过：函数返回类型不是 VOID" << std::endl;
         return;
@@ -97,6 +137,7 @@ void TCOPass::RetMotion(CFG *C) {
 
     auto blockMapCopy = *(C->block_map);
 
+    // 检查一个块到达 retBlock 的唯一性
     std::function<int(int)> fetchRetBB = [&](int startId) {
         if (C->G[startId].empty()) {
             return -1;
@@ -117,18 +158,25 @@ void TCOPass::RetMotion(CFG *C) {
         return currentId;
     };
 
+    // 遍历所有基本块，如果检测到对自身函数（且返回类型为 void）的调用，则可直接将其替换为 ret void
     for (auto &pairBlock : blockMapCopy) {
         auto &bbId = pairBlock.first;
         auto &basicBlk = pairBlock.second;
+
+        if (basicBlk->Instruction_list.empty()) {
+            continue;
+        }
 
         for (auto &inst : basicBlk->Instruction_list) {
             if (inst->GetOpcode() == BasicInstruction::CALL) {
                 auto *callI = dynamic_cast<CallInstruction *>(inst);
                 if (!callI) {
+                    std::cout << "[RetMotion] 警告：CallInstruction 动态转换失败，跳过" << std::endl;
                     continue;
                 }
 
                 if (callI->GetFunctionName() != C->function_def->GetFunctionName()) {
+                    // 只针对对自身函数的调用
                     continue;
                 }
 
@@ -138,17 +186,21 @@ void TCOPass::RetMotion(CFG *C) {
                 }
 
                 std::cout << "[RetMotion] 在块 " << bbId
-                          << " 检测到对自身函数的调用，可直接替换为 ret void" << std::endl;
-
+                          << " 中检测到对自身函数的调用，可直接替换为 ret void。" << std::endl;
+                // 将此块中最后一条指令（通常应是 CALL）替换为 ret void
                 basicBlk->Instruction_list.pop_back();
                 basicBlk->InsertInstruction(1, new RetInstruction(BasicInstruction::VOID, nullptr));
                 break;
             }
         }
     }
+
+    std::cout << "[RetMotion] RetMotion 优化执行结束" << std::endl;
 }
 
 void TCOPass::TailRecursionToLoop(CFG *cfg, FuncDefInstruction defI) {
+    std::cout << "[TailRecursionToLoop] 开始执行尾递归转循环优化..." << std::endl;
+
     std::string currentFuncName = defI->GetFunctionName();
 
     for (auto &pairBlock : *(cfg->block_map)) {
@@ -163,6 +215,11 @@ void TCOPass::TailRecursionToLoop(CFG *cfg, FuncDefInstruction defI) {
         auto lastInst = instList.back();
         auto beforeLastInst = *(instList.rbegin() + 1);
 
+        // 判定是否存在尾递归：
+        // 1) 倒数第二个指令是 CALL
+        // 2) 最后一个指令是 RET
+        // 3) CALL 指向自身函数
+        // 4) RET 使用了 CALL 的返回值 (对非 void 函数)
         if (lastInst->GetOpcode() != BasicInstruction::RET) {
             continue;
         }
@@ -184,6 +241,8 @@ void TCOPass::TailRecursionToLoop(CFG *cfg, FuncDefInstruction defI) {
         if (!retInst) {
             continue;
         }
+
+        // 如果函数返回类型不是 void，还要确保 ret 的返回值确实是 call 的结果
         if (retInst->GetRetVal() != callInst->DefinesResult()) {
             continue;
         }
@@ -195,10 +254,13 @@ void TCOPass::TailRecursionToLoop(CFG *cfg, FuncDefInstruction defI) {
         ConvertTailRecursionToLoop(cfg, blockPtr, callInst, defI);
     }
 
+    // 如果发生过尾递归优化 (isTCO = true)，在入口块插入相应的 PHI 指令
     if (defI->isTCO) {
         auto &mapBlocks = *(cfg->block_map);
         auto &entryBlock = mapBlocks[1];
         auto &entryInstrs = entryBlock->Instruction_list;
+
+        std::cout << "[TailRecursionToLoop] 在入口块中插入 PHI 指令，以处理循环化的参数..." << std::endl;
 
         for (size_t idx = 0; idx < defI->formals.size(); ++idx) {
             auto *phiInst = new PhiInstruction(
@@ -207,22 +269,32 @@ void TCOPass::TailRecursionToLoop(CFG *cfg, FuncDefInstruction defI) {
                 defI->phi_list_list[idx]
             );
             entryInstrs.insert(entryInstrs.begin(), phiInst);
+            std::cout << "[TailRecursionToLoop] 已插入 PHI 指令用于形参 " << idx << std::endl;
         }
     }
+
+    std::cout << "[TailRecursionToLoop] 尾递归转循环优化执行结束" << std::endl;
 }
 
-void TCOPass::ConvertTailRecursionToLoop(CFG *cfg, BasicBlock *block, 
-                                         CallInstruction *callInst,
-                                         FuncDefInstruction defI)
-{
+void TCOPass::ConvertTailRecursionToLoop(
+    CFG *cfg, 
+    BasicBlock *block, 
+    CallInstruction *callInst,
+    FuncDefInstruction defI
+) {
+    std::cout << "[ConvertTailRecursionToLoop] 将尾递归转换为循环..." << std::endl;
+
     auto &allBlocks = *(cfg->block_map);
 
+    // 假定第 0 号块是“函数定义块”，第 1 号块是“真正入口块”
     auto &theFirstBlock = allBlocks[0];
     auto &firstBlkInstrList = theFirstBlock->Instruction_list;
     auto &theSecondBlock = allBlocks[1];
     auto &secondBlkInstrList = theSecondBlock->Instruction_list;
 
+    // 如果是首次做 TCO，需要将第一块中除第一条指令(通常是 FuncDefInstruction)之外的指令转移到第二块
     if (!defI->isTCO) {
+        std::cout << "[ConvertTailRecursionToLoop] 首次进行 TCO，对初始块进行拆分和转移..." << std::endl;
         for (auto reverseIter = firstBlkInstrList.rbegin() + 1; 
              reverseIter != firstBlkInstrList.rend(); 
              ++reverseIter)
@@ -236,26 +308,37 @@ void TCOPass::ConvertTailRecursionToLoop(CFG *cfg, BasicBlock *block,
 
     auto paramOperands = callInst->GetParameterList();
 
+    // 对每个形参，生成或更新 PHI 信息
     for (size_t idx = 0; idx < defI->formals.size(); ++idx) {
         Operand oldParam = defI->formals_reg[idx];
 
-        std::vector<std::pair<Operand, Operand>> phiPairs;
-        phiPairs.emplace_back(GetNewLabelOperand(0), oldParam);
-        phiPairs.emplace_back(GetNewLabelOperand(block->block_id), paramOperands[idx].second);
-
+        // 首次 TCO 时需要申请空间
         if (!defI->isTCO) {
             defI->phi_list_list.resize(defI->formals.size());
             defI->phi_result_list.resize(defI->formals.size());
-            defI->phi_list_list[idx].push_back({GetNewLabelOperand(0), oldParam});
-
-            Operand newPhiReg = GetNewRegOperand(++cfg->max_reg);
-            defI->phi_result_list[idx] = newPhiReg;
         }
 
+        // 将在合适的块中插入 phi 指令
+        // phiPairs 用于记录 (前驱块, 对应传入的值)
+        std::vector<std::pair<Operand, Operand>> phiPairs;
+        phiPairs.emplace_back(GetNewLabelOperand(0), oldParam); 
+        phiPairs.emplace_back(GetNewLabelOperand(block->block_id), paramOperands[idx].second);
+
+        // 如果这是首次 TCO，需要为该形参分配一个新的寄存器
+        if (!defI->isTCO) {
+            Operand newPhiReg = GetNewRegOperand(++cfg->max_reg);
+            defI->phi_result_list[idx] = newPhiReg;
+
+            // 初始化 phi_list_list，以便稍后在入口块插入对应的 PhiInstruction
+            defI->phi_list_list[idx].push_back({GetNewLabelOperand(0), oldParam});
+        }
+
+        // 每次检测到尾递归调用，都需要再添加一个 (当前块, 实参值)
         defI->phi_list_list[idx].push_back(
             { GetNewLabelOperand(block->block_id), paramOperands[idx].second }
         );
 
+        // 全局替换：所有对 oldParam 的引用，都需要替换为 phi 结果（因为之后 oldParam 将不再被直接使用）
         for (auto &blkPair : allBlocks) {
             auto &instrList = blkPair.second->Instruction_list;
             for (auto &instr : instrList) {
@@ -264,21 +347,27 @@ void TCOPass::ConvertTailRecursionToLoop(CFG *cfg, BasicBlock *block,
         }
     }
 
+    // 将尾递归处的 CALL, RET 两条指令删除，替换为跳回到第 1 号块
     auto &instrsInBlock = block->Instruction_list;
-    instrsInBlock.pop_back();
-    instrsInBlock.pop_back();
+    instrsInBlock.pop_back();  // 移除 RET
+    instrsInBlock.pop_back();  // 移除 CALL
+    instrsInBlock.push_back(new BrUncondInstruction(GetNewLabelOperand(1)));
 
-    instrsInBlock.push_back(
-        new BrUncondInstruction(GetNewLabelOperand(1))
-    );
+    std::cout << "[ConvertTailRecursionToLoop] 已移除尾递归中的 Call/Ret 指令，添加无条件跳转到入口块" << std::endl;
 
+    // 标记该函数已经做过 TCO
     defI->isTCO = true;
+    std::cout << "[ConvertTailRecursionToLoop] 尾递归转换已完成。" << std::endl;
 }
 
 void TCOPass::Execute() {
-    for (auto [_, cfg] : llvmIR->llvm_cfg) {
+    std::cout << "[TCOPass::Execute] 开始执行 TCO 优化流程..." << std::endl;
+    for (auto &[funcDefInstr, cfg] : llvmIR->llvm_cfg) {
+        std::cout << "[TCOPass::Execute] 函数 " << funcDefInstr->GetFunctionName() << " 的 CFG 开始处理..." << std::endl;
         RetMotion(cfg);
-        TailRecursionToLoop(cfg, _);
+        TailRecursionToLoop(cfg, funcDefInstr);
         MakeFunctionOneExit(cfg);
+        std::cout << "[TCOPass::Execute] 函数 " << funcDefInstr->GetFunctionName() << " 的 CFG 处理完毕" << std::endl;
     }
+    std::cout << "[TCOPass::Execute] 所有函数的 TCO 优化流程执行完毕" << std::endl;
 }
