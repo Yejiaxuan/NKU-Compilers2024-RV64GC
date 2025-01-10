@@ -206,4 +206,21 @@ void RiscV64Selector::SelectInstructionAndBuildCFG() {
     }
 }
 
-void RiscV64Selector::ClearFunctionSelectState() { cur_offset = 0; }
+void RiscV64Selector::ClearFunctionSelectState() { 
+    llvm_rv_regtable.clear();
+    llvm_rv_allocas.clear();
+    cmp_context.clear();
+    cur_offset = 0; 
+}
+
+Register RiscV64Selector::GetllvmReg(int ir_reg, MachineDataType type) {
+    if (llvm_rv_regtable.find(ir_reg) == llvm_rv_regtable.end()) {
+        llvm_rv_regtable[ir_reg] = GetNewReg(type);
+    }
+    Assert(llvm_rv_regtable[ir_reg].type == type);
+    return llvm_rv_regtable[ir_reg];
+}
+
+Register RiscV64Selector::GetNewReg(MachineDataType type) {
+    return cur_func->GetNewRegister(type.data_type, type.data_length);
+}

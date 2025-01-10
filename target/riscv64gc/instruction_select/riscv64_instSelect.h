@@ -8,6 +8,13 @@ private:
     // 你需要保证在每个函数的指令选择结束后, cur_offset的值为局部变量所占栈空间的大小
     
     // TODO(): 添加更多你需要的成员变量和函数
+    std::map<int, Register> llvm_rv_regtable;
+    std::map<int, int> llvm_rv_allocas;
+    std::map<Uint64, bool> global_imm_vsd;
+    std::map<Register, Instruction> cmp_context;
+    Register GetllvmReg(int, MachineDataType);
+    Register GetNewReg(MachineDataType);
+
 public:
     RiscV64Selector(MachineUnit *dest, LLVMIR *IR) : MachineSelector(dest, IR) {}
     void SelectInstructionAndBuildCFG();
