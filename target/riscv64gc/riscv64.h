@@ -360,6 +360,48 @@ struct RiscVLabel {
     RiscVLabel() = default;
     RiscVLabel(std::string name, bool is_hi):name(name), is_hi(is_hi) { this->is_data_address = true; }
     // 添加一些你想用的构造函数
+    
+    // 通过跳转ID初始化（跳转标签）
+    RiscVLabel(int jmp_label_id)
+        : jmp_label_id(jmp_label_id), is_data_address(false) {}
+
+    // 通过跳转ID和是否为数据地址初始化
+    RiscVLabel(int jmp_label_id, bool is_data_address)
+        : jmp_label_id(jmp_label_id), is_data_address(is_data_address) {}
+
+    // 拷贝构造函数
+    RiscVLabel(const RiscVLabel &other)
+        : jmp_label_id(other.jmp_label_id),
+          is_data_address(other.is_data_address),
+          name(other.name),
+          is_hi(other.is_hi) {}
+
+    // 赋值运算符重载
+    RiscVLabel &operator=(const RiscVLabel &other) {
+        if (this == &other)
+            return *this;
+        jmp_label_id = other.jmp_label_id;
+        is_data_address = other.is_data_address;
+        name = other.name;
+        is_hi = other.is_hi;
+        return *this;
+    }
+
+    // 等号运算符重载（比较是否相等）
+    bool operator==(const RiscVLabel &other) const {
+        if (is_data_address != other.is_data_address)
+            return false;
+        if (is_data_address) {
+            return name == other.name && is_hi == other.is_hi;
+        } else {
+            return jmp_label_id == other.jmp_label_id;
+        }
+    }
+
+    // 不等号运算符重载
+    bool operator!=(const RiscVLabel &other) const {
+        return !(*this == other);
+    }
 };
 
 class RiscV64Instruction : public MachineBaseInstruction {
@@ -585,6 +627,21 @@ public:
         ret->setLabel(label);
         return ret;
     }
+    MachineCopyInstruction *ConstructCopyReg(Register dst, Register src, MachineDataType type) {
+        MachineCopyInstruction *ret =
+        new MachineCopyInstruction(new MachineRegister(src), new MachineRegister(dst), type);
+        return ret;
+    }
+    MachineCopyInstruction *ConstructCopyRegImmI(Register dst, int src, MachineDataType type) {
+        MachineCopyInstruction *ret =
+        new MachineCopyInstruction(new MachineImmediateInt(src), new MachineRegister(dst), type);
+        return ret;
+    }
+    MachineCopyInstruction *ConstructCopyRegImmF(Register dst, float src, MachineDataType type) {
+        MachineCopyInstruction *ret =
+        new MachineCopyInstruction(new MachineImmediateFloat(src), new MachineRegister(dst), type);
+        return ret;
+    }
     // example: call funcname  
     // iregnum 和 fregnum 表示该函数调用会分别用几个物理寄存器和浮点寄存器传参
     // iregnum 和 fregnum 的作用为精确确定call会读取哪些寄存器 (具体见GetCall_typeWritereg()函数)
@@ -624,8 +681,12 @@ public:
 
 private:
     // TODO: add your own members here
+    std::vector<RiscV64Instruction *> allocalist;
+
 public:
     // TODO: add your own members here
+    void AddAllocaIns(RiscV64Instruction *ins) { allocalist.push_back(ins); }
+
 };
 class RiscV64Unit : public MachineUnit {};
 

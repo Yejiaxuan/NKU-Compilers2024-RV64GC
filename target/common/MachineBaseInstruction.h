@@ -224,7 +224,7 @@ struct MachineImmediateDouble : public MachineBaseOperand {
 
 class MachineBaseInstruction {
 public:
-    enum { ARM = 0, RiscV, PHI};
+    enum { ARM = 0, RiscV, PHI, COPY};
     const int arch;
 
 private:
@@ -272,5 +272,33 @@ public:
     }
     void pushPhiList(int label, MachineBaseOperand *op) { phi_list.push_back(std::make_pair(label, op)); }
     int GetLatency() { return 0; }
+};
+
+class MachineCopyInstruction : public MachineBaseInstruction {
+private:
+    MachineDataType copy_type;
+    MachineBaseOperand *src;
+    MachineBaseOperand *dst;
+
+public:
+    std::vector<Register *> GetReadReg() {
+        if (src->op_type == MachineBaseOperand::REG)
+            return std::vector<Register *>({&(((MachineRegister *)src)->reg)});
+        return std::vector<Register *>();
+    }
+    std::vector<Register *> GetWriteReg() {
+        assert(dst->op_type == MachineBaseOperand::REG);
+        return std::vector<Register *>({&(((MachineRegister *)dst)->reg)});
+    }
+
+    MachineCopyInstruction(MachineBaseOperand *src, MachineBaseOperand *dst, MachineDataType copy_type)
+        : copy_type(copy_type), src(src), dst(dst), MachineBaseInstruction(MachineBaseInstruction::COPY) {}
+    void output(std::ostream &s) {
+        s << dst->toString() << " = " << copy_type.toString() << " COPY " << src->toString() << "\n";
+    }
+    MachineBaseOperand *GetSrc() { return src; }
+    MachineBaseOperand *GetDst() { return dst; }
+    MachineDataType GetCopyType() { return copy_type; }
+    int GetLatency() { return 1; }
 };
 #endif

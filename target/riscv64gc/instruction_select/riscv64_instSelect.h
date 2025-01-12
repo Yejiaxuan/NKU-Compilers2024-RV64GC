@@ -14,6 +14,9 @@ private:
     std::map<Register, Instruction> cmp_context;
     Register GetllvmReg(int, MachineDataType);
     Register GetNewReg(MachineDataType);
+    Register ExtractOp2Reg(BasicOperand *, MachineDataType);
+    int ExtractOp2ImmI32(BasicOperand *);
+    float ExtractOp2ImmF32(BasicOperand *);
 
 public:
     RiscV64Selector(MachineUnit *dest, LLVMIR *IR) : MachineSelector(dest, IR) {}

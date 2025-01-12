@@ -644,6 +644,13 @@ public:
     Operand GetResultReg() { return result; }
     void SetNonResultOperands(std::vector<Operand> ops) {}
     virtual int ConstPropagate(std::map<int, Instruction> &regresult_map) { return 0; }
+    int GetAllocaSize() {
+    int sz = 1;
+    for (auto d : dims) {
+        sz *= d;
+    }
+    return sz;
+}
 };
 
 // Conditional branch
