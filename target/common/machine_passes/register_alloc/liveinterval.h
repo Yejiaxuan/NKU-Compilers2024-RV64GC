@@ -31,8 +31,34 @@ public:
     // 检测两个活跃区间是否重叠
     // 保证两个活跃区间各个段各自都是不降序（升序）排列的
     bool operator&(const LiveInterval &that) const {
-        TODO("& operator in LiveInterval");
-        return false;
+        //TODO("& operator in LiveInterval");
+        // 如果任一方的 segments 为空，直接返回 false
+        if (segments.empty() || that.segments.empty()) {
+            return false;
+        }
+
+        // 遍历两个区间列表，检查是否有交集
+        for (const auto& seg1 : segments) {
+            for (const auto& seg2 : that.segments) {
+                // 检查两个区间是否重叠
+                if (seg1.begin < seg2.end && seg1.end > seg2.begin) {
+                    return true;  // 如果发现交集，返回 true
+                }
+            }
+        }
+
+        return false;  // 如果没有交集，返回 false
+    }
+
+    bool operator==(const LiveInterval &that) const {
+        // TODO : Judge if *this and that are equal
+        if (reg == that.reg) {
+            Assert(segments == that.segments);
+            return true;
+        } else {
+            return false;
+        }
+        return reg == that.reg;    // && segments == that.segments;
     }
 
     // 更新引用计数

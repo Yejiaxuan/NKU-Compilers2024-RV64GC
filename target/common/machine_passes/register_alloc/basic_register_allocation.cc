@@ -58,6 +58,7 @@ void InstructionNumber::ExecuteInFunc(MachineFunction *func) {
 
 void RegisterAllocation::UpdateIntervalsInCurrentFunc() {
     intervals.clear();
+    copy_sources.clear();
     auto mfun = current_func;
     auto mcfg = mfun->getMachineCFG();
 
@@ -92,6 +93,14 @@ void RegisterAllocation::UpdateIntervalsInCurrentFunc() {
         for (auto reverse_it = mcfg_node->Mblock->ReverseBegin(); reverse_it != mcfg_node->Mblock->ReverseEnd();
              ++reverse_it) {
             auto ins = *reverse_it;
+            if (ins->arch == MachineBaseInstruction::COPY) {
+                for (auto reg_w : ins->GetWriteReg()) {
+                    for (auto reg_r : ins->GetReadReg()) {
+                        copy_sources[*reg_w].push_back(*reg_r);
+                        copy_sources[*reg_r].push_back(*reg_w);
+                    }
+                }
+            }
             for (auto reg : ins->GetWriteReg()) {
                 // Update last_def of reg
                 last_def[*reg] = ins->getNumber();

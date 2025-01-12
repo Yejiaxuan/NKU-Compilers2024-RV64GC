@@ -41,12 +41,13 @@ public:
     bool ReleaseReg(int phy_id, LiveInterval interval);
 
     // 将区间inteval分配到内存,返回是否成功
-    bool OccupyMem(int offset, LiveInterval interval);
+    bool OccupyMem(int offset, int size, LiveInterval interval);
     // 释放内存,返回是否成功
-    bool ReleaseMem(int offset, LiveInterval interval);
+    bool ReleaseMem(int offset, int size, LiveInterval interval);
 
     // 获取空闲的（活跃区间不冲突的）物理寄存器, 返回物理寄存器编号
-    int getIdleReg(LiveInterval interval);
+    int getIdleReg(LiveInterval interval, std::vector<int> preferd_regs,
+                                  std::vector<int> noprefer_regs);
     // 获取空闲的（活跃区间不冲突的）内存, 返回栈上的offset
     int getIdleMem(LiveInterval interval);
 
@@ -60,8 +61,8 @@ public:
     // 获取所有溢出寄存器占用内存大小之和
     int getSpillSize() {
         // 也许需要添加新的成员变量进行维护
-        TODO("GetSpillSize");
-        return -1;
+        //TODO("GetSpillSize");
+        return mem_occupied.size() * 4;
     }
 };
 

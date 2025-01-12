@@ -714,6 +714,10 @@ private:
     // 生成将溢出寄存器写入栈的指令
     Register GenerateWriteCode(std::list<MachineBaseInstruction *>::iterator &it, int raw_stk_offset,
                                MachineDataType type);
+    void GenerateCopyToStackCode(std::list<MachineBaseInstruction *>::iterator &it, int raw_stk_offset, Register reg,
+                                 MachineDataType type);
+    void GenerateCopyFromStackCode(std::list<MachineBaseInstruction *>::iterator &it, int raw_stk_offset, Register reg,
+                                   MachineDataType type);
 };
 
 #endif

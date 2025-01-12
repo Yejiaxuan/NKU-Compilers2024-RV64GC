@@ -70,6 +70,8 @@ protected:
 protected:
     std::map<Register, LiveInterval> intervals;
     PhysicalRegistersAllocTools *phy_regs_tools;
+
+    std::map<Register, std::vector<Register>> copy_sources;
     
     // 在当前函数中完成寄存器分配
     virtual bool DoAllocInCurrentFunc() = 0;
@@ -116,6 +118,10 @@ private:
     // 生成将溢出寄存器写入栈的指令
     virtual Register GenerateWriteCode(std::list<MachineBaseInstruction *>::iterator &it, int raw_stk_offset,
                                        MachineDataType type) = 0;
+    virtual void GenerateCopyToStackCode(std::list<MachineBaseInstruction *>::iterator &it, int raw_stk_offset,
+                                         Register reg, MachineDataType type) = 0;
+    virtual void GenerateCopyFromStackCode(std::list<MachineBaseInstruction *>::iterator &it, int raw_stk_offset,
+                                           Register reg, MachineDataType type) = 0;
 
 protected:
     MachineFunction *function;

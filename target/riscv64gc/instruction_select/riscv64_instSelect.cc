@@ -87,7 +87,7 @@ template <> void RiscV64Selector::ConvertAndAppend<LoadInstruction *>(LoadInstru
             ERROR("Unexpected data type");
         }
     }
-    TODO("Implement this if you need");
+    // TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<StoreInstruction *>(StoreInstruction *ins) {
@@ -178,7 +178,7 @@ template <> void RiscV64Selector::ConvertAndAppend<StoreInstruction *>(StoreInst
             ERROR("Unexpected data type");
         }
     }
-    TODO("Implement this if you need");
+    // TODO("Implement this if you need");
 }
 
 struct Multiplier64 {
@@ -274,7 +274,7 @@ template <> void RiscV64Selector::ConvertAndAppend<ArithmeticInstruction *>(Arit
                 }
             }
         } else {
-            TODO("RV InstSelect For DataType %d", ins->GetDataType());
+            // TODO("RV InstSelect For DataType %d", ins->GetDataType());
         }
         // Imm-Imm
     } else if (ins->GetOpcode() == BasicInstruction::SUB) {
@@ -726,9 +726,9 @@ template <> void RiscV64Selector::ConvertAndAppend<ArithmeticInstruction *>(Arit
             cur_block->push_back(rvconstructor->ConstructR(RISCV_SUB, result_reg, r_n, prod_part_r));
         }
     } else if (ins->GetOpcode() == BasicInstruction::UMIN_I32) {
-        TODO("UMIN");
+        // TODO("UMIN");
     } else if (ins->GetOpcode() == BasicInstruction::UMAX_I32) {
-        TODO("UMAX");
+        // TODO("UMAX");
     } else if (ins->GetOpcode() == BasicInstruction::SMIN_I32) {
         if (ins->GetOperand1()->GetOperandType() == BasicOperand::IMMI32 &&
             ins->GetOperand2()->GetOperandType() == BasicOperand::IMMI32) {
@@ -898,7 +898,7 @@ template <> void RiscV64Selector::ConvertAndAppend<ArithmeticInstruction *>(Arit
     } else {
         Log("RV InstSelect For Opcode %d", ins->GetOpcode());
     }
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<IcmpInstruction *>(IcmpInstruction *ins) {
@@ -906,7 +906,7 @@ template <> void RiscV64Selector::ConvertAndAppend<IcmpInstruction *>(IcmpInstru
     auto res_op = (RegOperand *)ins->GetResult();
     auto res_reg = GetllvmReg(res_op->GetRegNo(), INT64);
     cmp_context[res_reg] = ins;
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<FcmpInstruction *>(FcmpInstruction *ins) {
@@ -914,7 +914,7 @@ template <> void RiscV64Selector::ConvertAndAppend<FcmpInstruction *>(FcmpInstru
     auto res_op = (RegOperand *)ins->GetResult();
     auto res_reg = GetllvmReg(res_op->GetRegNo(), INT64);
     cmp_context[res_reg] = ins;
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<AllocaInstruction *>(AllocaInstruction *ins) {
@@ -924,7 +924,7 @@ template <> void RiscV64Selector::ConvertAndAppend<AllocaInstruction *>(AllocaIn
     // Log("Alloca size %d", byte_size);
     llvm_rv_allocas[reg_op->GetRegNo()] = cur_offset;
     cur_offset += byte_size;
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<BrCondInstruction *>(BrCondInstruction *ins) {
@@ -1088,7 +1088,7 @@ template <> void RiscV64Selector::ConvertAndAppend<BrCondInstruction *>(BrCondIn
     auto br_else_ins =
     rvconstructor->ConstructJLabel(RISCV_JAL, GetPhysicalReg(RISCV_x0), RiscVLabel(false_label->GetLabelNo()));
     cur_block->push_back(br_else_ins);
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<BrUncondInstruction *>(BrUncondInstruction *ins) {
@@ -1097,7 +1097,7 @@ template <> void RiscV64Selector::ConvertAndAppend<BrUncondInstruction *>(BrUnco
     auto jal_instr = rvconstructor->ConstructJLabel(RISCV_JAL, GetPhysicalReg(RISCV_x0), dest_label);
 
     cur_block->push_back(jal_instr);
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<CallInstruction *>(CallInstruction *ins) {
@@ -1354,7 +1354,7 @@ template <> void RiscV64Selector::ConvertAndAppend<CallInstruction *>(CallInstru
     } else {
         ERROR("Unexpected return type %d", return_type);
     }
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<RetInstruction *>(RetInstruction *ins) {
@@ -1378,7 +1378,7 @@ template <> void RiscV64Selector::ConvertAndAppend<RetInstruction *>(RetInstruct
             // auto imm_reg = GetNewReg(INT64);
             // cur_block->push_back(rvconstructor->ConstructCopyRegImmI(imm_reg, *(int *)&imm, INT64));
             // cur_block->push_back(rvconstructor->ConstructR2(RISCV_FMV_W_X, GetPhysicalReg(RISCV_fa0), imm_reg));
-            TODO("Implement this if you need");
+            //TODO("Implement this if you need");
         } else if (ins->GetRetVal()->GetOperandType() == BasicOperand::REG) {
             // 处理寄存器返回值
             auto retreg_val = static_cast<RegOperand *>(ins->GetRetVal());
@@ -1394,7 +1394,7 @@ template <> void RiscV64Selector::ConvertAndAppend<RetInstruction *>(RetInstruct
                 auto retcopy_instr = rvconstructor->ConstructCopyReg(GetPhysicalReg(RISCV_a0), reg, INT64);
                 cur_block->push_back(retcopy_instr);
             }
-            TODO("Implement this if you need");
+            //TODO("Implement this if you need");
         }
     }
 
@@ -1427,7 +1427,7 @@ template <> void RiscV64Selector::ConvertAndAppend<FptosiInstruction *>(FptosiIn
     } else {
         ERROR("Unexpected Fptosi src type");
     }
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<SitofpInstruction *>(SitofpInstruction *ins) {
@@ -1449,7 +1449,7 @@ template <> void RiscV64Selector::ConvertAndAppend<SitofpInstruction *>(SitofpIn
     } else {
         ERROR("Unexpected Sitofp src type");
     }
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<ZextInstruction *>(ZextInstruction *ins) {
@@ -1677,7 +1677,7 @@ template <> void RiscV64Selector::ConvertAndAppend<ZextInstruction *>(ZextInstru
     } else {
         ERROR("Unexpected ins Before zext");
     }
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<GetElementptrInstruction *>(GetElementptrInstruction *ins) {
@@ -1828,7 +1828,7 @@ template <> void RiscV64Selector::ConvertAndAppend<GetElementptrInstruction *>(G
     } else {
         ERROR("Unexpected OperandType");
     }
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<PhiInstruction *>(PhiInstruction *ins) {
@@ -1869,7 +1869,7 @@ template <> void RiscV64Selector::ConvertAndAppend<PhiInstruction *>(PhiInstruct
         }
     }
     cur_block->push_back(m_phi);
-    TODO("Implement this if you need");
+    //TODO("Implement this if you need");
 }
 
 template <> void RiscV64Selector::ConvertAndAppend<Instruction>(Instruction inst) {
@@ -1960,7 +1960,7 @@ void RiscV64Selector::SelectInstructionAndBuildCFG() {
 
         // TODO: 添加函数参数(推荐先阅读一下riscv64_lowerframe.cc中的代码和注释)
         // See MachineFunction::AddParameter()
-        TODO("Add function parameter if you need");
+        // TODO("Add function parameter if you need");
         for (int i = 0; i < defI->GetFormalSize(); i++) {
             Assert(defI->formals_reg[i]->GetOperandType() == BasicOperand::REG);
             MachineDataType type;

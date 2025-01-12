@@ -298,7 +298,7 @@ void RiscV64LowerStack::Execute() {
         }
 #endif
     }
-    Log("RiscV64LowerStack");
+    //Log("RiscV64LowerStack");
 
     // 到此我们就完成目标代码生成的所有工作了
 }
