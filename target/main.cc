@@ -16,6 +16,7 @@
 #include "./riscv64gc/instruction_print/riscv64_printer.h"
 #include "./riscv64gc/instruction_select/riscv64_instSelect.h"
 #include "./riscv64gc/instruction_select/riscv64_lowerframe.h"
+#include "./riscv64gc/instruction_select/riscv64_lowercopy.h"
 #include "./riscv64gc/riscv64.h"
 
 #include <assert.h>
@@ -206,6 +207,7 @@ int main(int argc, char **argv) {
         RiscV64LowerFrame(m_unit).Execute();
 
         FastLinearScan(m_unit, &regs, &spiller).Execute();
+        RiscV64LowerCopy(m_unit).Execute();
         RiscV64LowerStack(m_unit).Execute();
 
         RiscV64Printer(fout, m_unit).emit();
