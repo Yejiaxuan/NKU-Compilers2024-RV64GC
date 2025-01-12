@@ -83,6 +83,7 @@ protected:
     MachineCFG *mcfg;
 
 public:
+    bool HasInParaInStack() { return has_inpara_instack; }
     void SetHasInParaInStack(bool has) { has_inpara_instack = has; }
     // 更新现存的最大块编号
     void UpdateMaxLabel(int labelid) { max_exist_label = max_exist_label > labelid ? max_exist_label : labelid; }
