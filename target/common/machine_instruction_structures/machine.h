@@ -79,9 +79,11 @@ protected:
     int stack_sz;
     // 传实参所用到的栈空间大小
     int para_sz;
+    bool has_inpara_instack;
     MachineCFG *mcfg;
 
 public:
+    void SetHasInParaInStack(bool has) { has_inpara_instack = has; }
     // 更新现存的最大块编号
     void UpdateMaxLabel(int labelid) { max_exist_label = max_exist_label > labelid ? max_exist_label : labelid; }
     // 获取形参列表

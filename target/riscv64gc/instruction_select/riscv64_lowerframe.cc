@@ -17,7 +17,10 @@ void RiscV64LowerFrame::Execute() {
         for (auto &b : func->blocks) {
             cur_block = b;
             if (b->getLabelId() == 0) {    // 函数入口，需要插入获取参数的指令
+                Register para_basereg = current_func->GetNewReg(INT64);
                 int i32_cnt = 0;
+                int f32_cnt = 0;
+                int para_offset = 0;
                 for (auto para : func->GetParameters()) {    // 你需要在指令选择阶段正确设置parameters的值
                     if (para.type.data_type == INT64.data_type) {
                         if (i32_cnt < 8) {    // 插入使用寄存器传参的指令
@@ -25,14 +28,32 @@ void RiscV64LowerFrame::Execute() {
                                                                     GetPhysicalReg(RISCV_x0)));
                         }
                         if (i32_cnt >= 8) {    // 插入使用内存传参的指令
-                            TODO("Implement this if you need");
+                            b->push_front(rvconstructor->ConstructIImm(RISCV_LD, para, GetPhysicalReg(RISCV_fp), 
+                                                                    para_offset));
+                            para_offset += 8;
+                            //TODO("Implement this if you need");
                         }
                         i32_cnt++;
                     } else if (para.type.data_type == FLOAT64.data_type) {    // 处理浮点数
-                        TODO("Implement this if you need");
+                        if (f32_cnt < 8) {
+                            b->push_front(
+                            rvconstructor->ConstructCopyReg(para, GetPhysicalReg(RISCV_fa0 + f32_cnt), FLOAT64));
+                        }
+                        if (f32_cnt >= 8) {
+                            b->push_front(
+                            rvconstructor->ConstructIImm(RISCV_FLD, para, GetPhysicalReg(RISCV_fp), para_offset));
+                            para_offset += 8;
+                        }   
+                        f32_cnt++;
+                        //TODO("Implement this if you need");
                     } else {
                         ERROR("Unknown type");
                     }
+                }
+                if (para_offset != 0) {
+                    current_func->SetHasInParaInStack(true);
+                    cur_block->push_front(
+                    rvconstructor->ConstructCopyReg(para_basereg, GetPhysicalReg(RISCV_fp), INT64));
                 }
             }
         }
@@ -49,3 +70,4 @@ void RiscV64LowerStack::Execute() {
 
     // 到此我们就完成目标代码生成的所有工作了
 }
+
