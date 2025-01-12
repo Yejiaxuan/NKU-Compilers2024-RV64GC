@@ -568,6 +568,7 @@ private:
     std::vector<std::pair<Operand, Operand>> phi_list;
 
 public:
+    enum LLVMType GetDataType() { return type; }
     const std::vector<std::pair<Operand, Operand>>& GetPhiList() const { return phi_list; }
     Operand GetResultReg() { return result; }
     PhiInstruction(enum LLVMType type, Operand result, decltype(phi_list) val_labels) {
