@@ -26,7 +26,10 @@ protected:
     // 例子1：RISCV中，a0是a0的别名；RISCV中，只有寄存器和寄存器自己构成别名
     // 例子2：x86中，eax的别名有：eax, ax, al, ah
     // 例子3：ARM中，q0的别名有：q0,d0,d1,s0,s1,s2,s3
-    virtual std::vector<int> getAliasRegs(int phy_id) = 0;
+    virtual std::vector<int> getAliasRegs(int phy_id)
+    {
+        return std::vector<int>({phy_id});
+    }
 
 public:
     // 清空占用状态

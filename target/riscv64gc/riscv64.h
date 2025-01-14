@@ -353,25 +353,31 @@ bne %1, %2, .L1(即jmp_label_id)
 j L2
 */
 struct RiscVLabel {
-    int jmp_label_id = 0; // 该id为跳转的基本块编号
+    int jmp_label_id = 0;        // 跳转的基本块编号
+    int seq_label_id = 0;        // 序列号
     bool is_data_address = false; // 是否为数据段标签
-    std::string name;
-    bool is_hi; // 对应%hi(name) 和 %lo(name)
-    RiscVLabel() = default;
-    RiscVLabel(std::string name, bool is_hi):name(name), is_hi(is_hi) { this->is_data_address = true; }
-    // 添加一些你想用的构造函数
-    
-    // 通过跳转ID初始化（跳转标签）
-    RiscVLabel(int jmp_label_id)
-        : jmp_label_id(jmp_label_id), is_data_address(false) {}
+    std::string name;            // 标签名
+    bool is_hi = false;          // 是否对应 %hi(name)
 
-    // 通过跳转ID和是否为数据地址初始化
-    RiscVLabel(int jmp_label_id, bool is_data_address)
-        : jmp_label_id(jmp_label_id), is_data_address(is_data_address) {}
+    // 默认构造函数
+    RiscVLabel() = default;
+
+    // 构造函数：通过跳转ID和序列号初始化
+    RiscVLabel(int jmp, int seq)
+        : jmp_label_id(jmp), seq_label_id(seq), is_data_address(false), is_hi(false) {}
+
+    // 构造函数：通过跳转ID和是否为数据地址初始化
+    RiscVLabel(int jmp, bool is_data = false)
+        : jmp_label_id(jmp), is_data_address(is_data), is_hi(false) {}
+
+    // 构造函数：通过数据标签名和是否为 %hi(name) 初始化
+    RiscVLabel(std::string label_name, bool hi_flag)
+        : is_data_address(true), name(std::move(label_name)), is_hi(hi_flag) {}
 
     // 拷贝构造函数
     RiscVLabel(const RiscVLabel &other)
         : jmp_label_id(other.jmp_label_id),
+          seq_label_id(other.seq_label_id),
           is_data_address(other.is_data_address),
           name(other.name),
           is_hi(other.is_hi) {}
@@ -381,13 +387,13 @@ struct RiscVLabel {
         if (this == &other)
             return *this;
         jmp_label_id = other.jmp_label_id;
+        seq_label_id = other.seq_label_id;
         is_data_address = other.is_data_address;
         name = other.name;
         is_hi = other.is_hi;
         return *this;
     }
 
-    // 等号运算符重载（比较是否相等）
     bool operator==(const RiscVLabel &other) const {
         if (is_data_address != other.is_data_address)
             return false;
@@ -398,7 +404,6 @@ struct RiscVLabel {
         }
     }
 
-    // 不等号运算符重载
     bool operator!=(const RiscVLabel &other) const {
         return !(*this == other);
     }
@@ -628,16 +633,25 @@ public:
         return ret;
     }
     MachineCopyInstruction *ConstructCopyReg(Register dst, Register src, MachineDataType type) {
+        Assert(dst.type == src.type);
+        Assert(dst.type == type);
+
         MachineCopyInstruction *ret =
         new MachineCopyInstruction(new MachineRegister(src), new MachineRegister(dst), type);
         return ret;
     }
     MachineCopyInstruction *ConstructCopyRegImmI(Register dst, int src, MachineDataType type) {
+        Assert(dst.type == type);
+        Assert(type.data_type == MachineDataType::INT);
+
         MachineCopyInstruction *ret =
         new MachineCopyInstruction(new MachineImmediateInt(src), new MachineRegister(dst), type);
         return ret;
     }
     MachineCopyInstruction *ConstructCopyRegImmF(Register dst, float src, MachineDataType type) {
+        Assert(dst.type == type);
+        Assert(type.data_type == MachineDataType::FLOAT);
+
         MachineCopyInstruction *ret =
         new MachineCopyInstruction(new MachineImmediateFloat(src), new MachineRegister(dst), type);
         return ret;
@@ -668,6 +682,7 @@ class RiscV64Unit;
 class RiscV64Block : public MachineBlock {
 public:
     RiscV64Block(int id) : MachineBlock(id) {}
+    std::list<MachineBaseInstruction *>::iterator getInsertBeforeBrIt();
 };
 
 class RiscV64BlockFactory : public MachineBlockFactory {
@@ -678,6 +693,10 @@ public:
 class RiscV64Function : public MachineFunction {
 public:
     RiscV64Function(std::string name) : MachineFunction(name, new RiscV64BlockFactory()) {}
+
+protected:
+    void MoveOnePredecessorBranchTargetToNewBlock(int pre, int original_target, int new_target);
+    void AppendUncondBranchInstructionToNewBlock(int new_block, int br_target);
 
 private:
     // TODO: add your own members here

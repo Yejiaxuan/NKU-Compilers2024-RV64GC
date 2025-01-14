@@ -18,8 +18,12 @@ protected:
 
 private:
     MachineFunction *parent;
+    std::map<Register, MachineBaseOperand *> parallel_copy_list;
 
 public:
+    virtual std::list<MachineBaseInstruction *>::iterator getInsertBeforeBrIt() = 0;
+    void InsertParallelCopyList(Register dst, MachineBaseOperand *src) { parallel_copy_list[dst] = src; }
+    decltype(parallel_copy_list) &GetParallelCopyList() { return parallel_copy_list; }
     decltype(instructions) &GetInsList() { return instructions; }
     void clear() { instructions.clear(); }
     auto erase(decltype(instructions.begin()) it) { return instructions.erase(it); }
@@ -130,11 +134,18 @@ public:
 
 protected:
     // 获取新的块
+    virtual void MoveOnePredecessorBranchTargetToNewBlock(int pre, int original_target, int new_target) = 0;
+    virtual void AppendUncondBranchInstructionToNewBlock(int new_block, int br_target) = 0;
+    void RedirectPhiNodePredecessor(int phi_block, int old_predecessor, int new_predecessor);
     MachineBlock *InitNewBlock();
 
 public:
+    MachineBlock *InsertNewBranchOnlyBlockBetweenEdge(int begin, int end);
+
+public:
     MachineFunction(std::string name, MachineBlockFactory *blockfactory)
-        : func_name(name), stack_sz(0), para_sz(0), block_factory(blockfactory), max_exist_label(0){}
+        : func_name(name), stack_sz(0), para_sz(0), block_factory(blockfactory), max_exist_label(0),
+          has_inpara_instack(false) {}
 };
 
 class MachineUnit {

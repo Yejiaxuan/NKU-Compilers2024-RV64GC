@@ -70,6 +70,40 @@ Register MachineFunction::GetNewRegister(int regtype, int reglength) {
 
 Register MachineFunction::GetNewReg(MachineDataType type) { return GetNewRegister(type.data_type, type.data_length); }
 
+MachineBlock *MachineFunction::InsertNewBranchOnlyBlockBetweenEdge(int begin, int end) {
+    // TODO("Implement InsertNewBranchOnlyBlockBetweenEdge");
+    // New Block
+    auto new_block = InitNewBlock();
+    auto mid = new_block->getLabelId();
+    // Change Edge
+    mcfg->RemoveEdge(begin, end);
+    mcfg->MakeEdge(begin, mid);
+    mcfg->MakeEdge(mid, end);
+    // Redirect Branch
+    MoveOnePredecessorBranchTargetToNewBlock(begin, end, mid);
+    // Insert Branch in new block
+    AppendUncondBranchInstructionToNewBlock(mid, end);
+    // Redirect Phi
+    RedirectPhiNodePredecessor(end, begin, mid);
+    return new_block;
+}
+
+void MachineFunction::RedirectPhiNodePredecessor(int phi_block, int old_predecessor, int new_predecessor) {
+    // in phi_block, find all phi_instructions containing <label old_predecessor> in phi instruction
+    // then replace <label old_predecessor> to <label new_predecessor>
+    // TODO("Implement RedirectPhiNodePredecessor");
+    auto block = mcfg->GetNodeByBlockId(phi_block)->Mblock;
+    for (auto ins : *block) {
+        if (ins->arch != MachineBaseInstruction::PHI)
+            break;
+        auto mphi = (MachinePhiInstruction *)ins;
+        for (auto &phi_pair : mphi->GetPhiList()) {
+            if (phi_pair.first == old_predecessor) {
+                phi_pair.first = new_predecessor;
+            }
+        }
+    }
+}
 MachineBlock *MachineFunction::InitNewBlock() {
     int new_id = ++max_exist_label;
     MachineBlock *new_block = block_factory->CreateBlock(new_id);
