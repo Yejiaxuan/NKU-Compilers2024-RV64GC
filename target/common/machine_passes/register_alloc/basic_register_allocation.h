@@ -36,6 +36,13 @@ private:
     std::queue<MachineFunction *> not_allocated_funcs;
     SpillCodeGen *spiller;
 
+    void InitializeAllocationQueue();
+    void InitializeAllocation(MachineFunction *mfun);
+    void ClearPreviousAllocResult(MachineFunction *mfun);
+    bool AttemptAllocation(MachineFunction *mfun);
+    void HandleSpillingIfNeeded(MachineFunction *mfun);
+    void FinalizeAllocation();
+
 protected:
     std::map<int, InstructionNumberEntry> numbertoins;
     // 将分配结果写入alloc_result
@@ -107,6 +114,9 @@ public:
         : MachinePass(unit), alloc_result(alloc_result) {}
     void Execute();
     void ExecuteInFunc();
+    void RewriteRegisters(const std::vector<Register*>& regs, 
+                         MachineFunction* func, 
+                         bool isWrite);
 };
 
 class SpillCodeGen {
@@ -130,6 +140,10 @@ protected:
 public:
     // 在当前函数中执行溢出代码生成
     void ExecuteInFunc(MachineFunction *function, std::map<Register, AllocResult> *alloc_result);
+    void HandleCopyInstruction(std::list<MachineBaseInstruction *>::iterator &it, MachineBaseInstruction* ins);
+    void SpillRegisters(const std::vector<Register*>& regs, 
+                       std::list<MachineBaseInstruction *>::iterator &it, 
+                       bool isWrite);
 };
 
 #endif
