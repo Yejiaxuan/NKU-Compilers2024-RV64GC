@@ -15,140 +15,95 @@ bool PhysicalRegistersAllocTools::OccupyReg(int phy_id, LiveInterval interval) {
 
 bool PhysicalRegistersAllocTools::ReleaseReg(int phy_id, LiveInterval interval) { 
     //TODO("ReleaseReg"); 
-    auto it = phy_occupied[phy_id].begin();
-    for (; it != phy_occupied[phy_id].end(); ++it) {
-        if (*it == interval) {
-            phy_occupied[phy_id].erase(it);
-            return true;
-        }
+    auto &occupied_list = phy_occupied[phy_id];  // 引用寄存器占用列表
+    auto it = std::find(occupied_list.begin(), occupied_list.end(), interval);
+    if (it != occupied_list.end()) {
+        occupied_list.erase(it);  // 如果找到，则删除
+        return true;
     }
-    return false;
+    return false;  // 未找到对应的 interval
 }
 
-bool PhysicalRegistersAllocTools::OccupyMem(int offset, int size, LiveInterval interval) {
+bool PhysicalRegistersAllocTools::OccupyMem(int offset, LiveInterval interval) {
     //TODO("OccupyMem");
-    size /= 4;
-    for (int i = offset; i < offset + size; i++) {
-        while (i >= mem_occupied.size()) {
-            mem_occupied.push_back({});
-        }
-        mem_occupied[i].push_back(interval);
+    int required_size = offset + (interval.getReg().getDataWidth() / 4);
+    if (required_size > mem_occupied.size()) {
+        mem_occupied.resize(required_size);
     }
-    return true;
-}
-bool PhysicalRegistersAllocTools::ReleaseMem(int offset, int size, LiveInterval interval) {
-    //TODO("ReleaseMem");
-    size /= 4;
-    for (int i = offset; i < offset + size; i++) {
-        auto it = mem_occupied[i].begin();
-        for (; it != mem_occupied[i].end(); ++it) {
-            if (*it == interval) {
-                mem_occupied[i].erase(it);
-                break;
-            }
-        }
-    }
+
+    // 将 interval 添加到对应的内存位置
+    std::for_each(mem_occupied.begin() + offset, 
+                  mem_occupied.begin() + required_size, 
+                  [&](std::vector<LiveInterval> &slot) {
+                      slot.push_back(interval);
+                  });
+
     return true;
 }
 
-int PhysicalRegistersAllocTools::getIdleReg(LiveInterval interval, std::vector<int> preferd_regs,
-                                  std::vector<int> noprefer_regs) {
+bool PhysicalRegistersAllocTools::ReleaseMem(int offset, LiveInterval interval) {
+    //TODO("ReleaseMem");
+    // 计算需要释放的内存范围
+    int size = interval.getReg().getDataWidth() / 4;
+    int end = offset + size;
+
+    // 遍历内存范围并移除 interval
+    std::for_each(mem_occupied.begin() + offset, 
+                  mem_occupied.begin() + end, 
+                  [&](std::vector<LiveInterval> &slot) {
+                      auto it = std::find(slot.begin(), slot.end(), interval);
+                      if (it != slot.end()) {
+                          slot.erase(it);
+                      }
+                  });
+
+    return true;
+}
+
+int PhysicalRegistersAllocTools::getIdleReg(LiveInterval interval) {
     //TODO("getIdleReg");
-    for (auto i : preferd_regs) {
-        int ok = true;
-        for (auto conflict_j : getAliasRegs(i)) {
-            for (auto other_interval : phy_occupied[conflict_j]) {
+    // 遍历所有可能分配的寄存器
+    for (auto reg_no : getValidRegs(interval)) {
+        bool canAllocate = true;
+        // 检查该寄存器及其别名冲突情况
+        for (auto alias : getAliasRegs(reg_no)) {
+            for (auto other_interval : phy_occupied[alias]) {
                 if (interval & other_interval) {
-                    ok = false;
+                    canAllocate = false;
                     break;
                 }
             }
+            if (!canAllocate) break;
         }
-        if (ok) {
-            return i;
-        }
-    }
-    std::map<int, int> reg_tried, reg_valid;
-    for (auto i : preferd_regs) {
-        reg_tried[i] = 1;
-    }
-    for (auto i : noprefer_regs) {
-        reg_tried[i] = 1;
-    }
-    for (auto i : getValidRegs(interval)) {
-        reg_valid[i] = 1;
-        if (reg_tried[i])
-            continue;
-        int ok = true;
-        for (auto conflict_j : getAliasRegs(i)) {
-            for (auto other_interval : phy_occupied[conflict_j]) {
-                if (interval & other_interval) {
-                    ok = false;
-                    break;
-                }
-            }
-        }
-        if (ok) {
-            return i;
+        if (canAllocate) {
+            return reg_no;
         }
     }
-    for (auto i : noprefer_regs) {
-        if (!reg_valid[i])
-            continue;
-        int ok = true;
-        for (auto conflict_j : getAliasRegs(i)) {
-            for (auto other_interval : phy_occupied[conflict_j]) {
-                if (interval & other_interval) {
-                    ok = false;
-                    break;
-                }
-            }
-        }
-        if (ok) {
-            return i;
-        }
-    }
+    // 未找到合适的寄存器返回 -1
     return -1;
 }
+
 int PhysicalRegistersAllocTools::getIdleMem(LiveInterval interval) { 
     //TODO("getIdleMem");
-    std::vector<bool> ok;
-    ok.resize(mem_occupied.size(), true);
-    for (int i = 0; i < mem_occupied.size(); i++) {
-        ok[i] = true;
-        for (auto other_interval : mem_occupied[i]) {
-            if (interval & other_interval) {
-                ok[i] = false;
-                break;
-            }
-        }
-    }
-    int free_cnt = 0;
-    for (int offset = 0; offset < ok.size(); offset++) {
-        if (ok[offset]) {
-            free_cnt++;
-        } else {
-            free_cnt = 0;
-        }
-        if (free_cnt == interval.getReg().getDataWidth() / 4) {
-            return offset - free_cnt + 1;
-        }
-    }
-    return mem_occupied.size() - free_cnt;
+    int required_size = interval.getReg().getDataWidth() / 4; // 计算所需内存大小
+
+    // 查找连续的空闲内存块
+    auto it = std::search_n(mem_occupied.begin(), mem_occupied.end(), required_size, std::vector<LiveInterval>{},
+                            [&](const std::vector<LiveInterval> &slot, const std::vector<LiveInterval> &) {
+                                // 检查当前内存槽是否有冲突
+                                return std::all_of(slot.begin(), slot.end(), [&](const LiveInterval &other_interval) {
+                                    return !(interval & other_interval);
+                                });
+                            });
+
+    // 如果找到合适的内存块，返回其起始位置；否则返回 mem_occupied 的大小（下一个空闲位置）
+    return (it != mem_occupied.end()) ? std::distance(mem_occupied.begin(), it) : mem_occupied.size();
 }
 
 int PhysicalRegistersAllocTools::swapRegspill(int p_reg1, LiveInterval interval1, int offset_spill2, int size,
                                               LiveInterval interval2) {
 
     //TODO("swapRegspill");
-    // 1. 释放寄存器p_reg1
-    ReleaseReg(p_reg1, interval1);
-    // 2. 释放内存offset_spill2
-    ReleaseMem(offset_spill2, size, interval2);
-    // 3. 分配寄存器p_reg1;
-    OccupyReg(p_reg1, interval2);
-    // 4. 分配内存offset_spill2
-    // OccupyMem(getIdleMem(interval1), size, interval1);
     return 0;
 }
 

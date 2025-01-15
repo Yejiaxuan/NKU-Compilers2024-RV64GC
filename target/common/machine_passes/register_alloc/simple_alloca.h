@@ -3,9 +3,6 @@
 #include "basic_register_allocation.h"
 
 class SimpleAlloca : public RegisterAllocation {
-private:
-    void CoalesceInCurrentFunc();
-
 protected:
     bool DoAllocInCurrentFunc();
 
