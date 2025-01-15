@@ -336,22 +336,26 @@ Register RiscV64Spiller::GenerateReadCode(std::list<MachineBaseInstruction *>::i
     //TODO("GenerateReadSpillCode");
     int offset = raw_stk_offset + function->GetStackOffset();
     if (offset <= 2047 && offset >= -2048) {
-        if (type == INT64) {
-            cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_LD, read_mid_reg, GetPhysicalReg(RISCV_sp),
-                                                               offset));    // insert load
-        } else if (type == FLOAT64) {
-            cur_block->insert(it,
-                              rvconstructor->ConstructIImm(RISCV_FLD, read_mid_reg, GetPhysicalReg(RISCV_sp), offset));
+        switch(type.data_type) {
+            case MachineDataType::INT:
+                cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_LD, read_mid_reg, GetPhysicalReg(RISCV_sp), offset));
+                break;
+            case MachineDataType::FLOAT:
+                cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_FLD, read_mid_reg, GetPhysicalReg(RISCV_sp), offset));
+                break;
         }
     } else {
         auto imm_reg = function->GetNewRegister(INT64.data_type, INT64.data_length);
         auto offset_mid_reg = function->GetNewRegister(INT64.data_type, INT64.data_length);
         cur_block->insert(it, rvconstructor->ConstructUImm(RISCV_LI, imm_reg, offset));
         cur_block->insert(it, rvconstructor->ConstructR(RISCV_ADD, offset_mid_reg, GetPhysicalReg(RISCV_sp), imm_reg));
-        if (type == INT64) {
-            cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_LD, read_mid_reg, offset_mid_reg, 0));
-        } else if (type == FLOAT64) {
-            cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_FLD, read_mid_reg, offset_mid_reg, 0));
+        switch(type.data_type) {
+            case MachineDataType::INT:
+                cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_LD, read_mid_reg, offset_mid_reg, 0));
+                break;
+            case MachineDataType::FLOAT:
+                cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_FLD, read_mid_reg, offset_mid_reg, 0));
+                break;
         }
     }
     return read_mid_reg;
@@ -365,22 +369,26 @@ Register RiscV64Spiller::GenerateWriteCode(std::list<MachineBaseInstruction *>::
     int offset = raw_stk_offset + function->GetStackOffset();
     ++it;
     if (offset <= 2047 && offset >= -2048) {
-        if (type == INT64) {
-            cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_SD, write_mid_reg, GetPhysicalReg(RISCV_sp),
-                                                               offset));    // insert store
-        } else if (type == FLOAT64) {
-            cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_FSD, write_mid_reg, GetPhysicalReg(RISCV_sp),
-                                                               offset));    // insert store
+        switch(type.data_type) {
+            case MachineDataType::INT:
+                cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_SD, write_mid_reg, GetPhysicalReg(RISCV_sp), offset));
+                break;
+            case MachineDataType::FLOAT:
+                cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_FSD, write_mid_reg, GetPhysicalReg(RISCV_sp), offset));
+                break;
         }
     } else {
         auto imm_reg = function->GetNewRegister(INT64.data_type, INT64.data_length);
         auto offset_mid_reg = function->GetNewRegister(INT64.data_type, INT64.data_length);
         cur_block->insert(it, rvconstructor->ConstructUImm(RISCV_LI, imm_reg, offset));
         cur_block->insert(it, rvconstructor->ConstructR(RISCV_ADD, offset_mid_reg, GetPhysicalReg(RISCV_sp), imm_reg));
-        if (type == INT64) {
-            cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_SD, write_mid_reg, offset_mid_reg, 0));
-        } else if (type == FLOAT64) {
-            cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_FSD, write_mid_reg, offset_mid_reg, 0));
+        switch(type.data_type) {
+            case MachineDataType::INT:
+                cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_SD, write_mid_reg, offset_mid_reg, 0));
+                break;
+            case MachineDataType::FLOAT:
+                cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_FSD, write_mid_reg, offset_mid_reg, 0));
+                break;
         }
     }
     --it;
@@ -392,22 +400,26 @@ void RiscV64Spiller::GenerateCopyToStackCode(std::list<MachineBaseInstruction *>
     int offset = raw_stk_offset + function->GetStackOffset();
     // cur_block->insert(it, rvconstructor->ConstructComment("Write Spill\n"));
     if (offset <= 2047 && offset >= -2048) {
-        if (type == INT64) {
-            cur_block->insert(
-            it, rvconstructor->ConstructSImm(RISCV_SD, reg, GetPhysicalReg(RISCV_sp), offset));    // insert store
-        } else if (type == FLOAT64) {
-            cur_block->insert(
-            it, rvconstructor->ConstructSImm(RISCV_FSD, reg, GetPhysicalReg(RISCV_sp), offset));    // insert store
+        switch (type.data_type) {
+            case MachineDataType::INT:
+                cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_SD, reg, GetPhysicalReg(RISCV_sp), offset));
+                break;
+            case MachineDataType::FLOAT:
+                cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_FSD, reg, GetPhysicalReg(RISCV_sp), offset));
+                break;
         }
     } else {
         auto imm_reg = function->GetNewRegister(INT64.data_type, INT64.data_length);
         auto offset_mid_reg = function->GetNewRegister(INT64.data_type, INT64.data_length);
         cur_block->insert(it, rvconstructor->ConstructUImm(RISCV_LI, imm_reg, offset));
         cur_block->insert(it, rvconstructor->ConstructR(RISCV_ADD, offset_mid_reg, GetPhysicalReg(RISCV_sp), imm_reg));
-        if (type == INT64) {
-            cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_SD, reg, offset_mid_reg, 0));
-        } else if (type == FLOAT64) {
-            cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_FSD, reg, offset_mid_reg, 0));
+        switch(type.data_type) {
+            case MachineDataType::INT:
+                cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_SD, reg, offset_mid_reg, 0));
+                break;
+            case MachineDataType::FLOAT:
+                cur_block->insert(it, rvconstructor->ConstructSImm(RISCV_FSD, reg, offset_mid_reg, 0));
+                break;
         }
     }
 }
@@ -416,53 +428,93 @@ void RiscV64Spiller::GenerateCopyFromStackCode(std::list<MachineBaseInstruction 
     int offset = raw_stk_offset + function->GetStackOffset();
     // cur_block->insert(it, rvconstructor->ConstructComment("Read Spill\n"));
     if (offset <= 2047 && offset >= -2048) {
-        if (type == INT64) {
-            cur_block->insert(
-            it, rvconstructor->ConstructIImm(RISCV_LD, reg, GetPhysicalReg(RISCV_sp), offset));    // insert load
-        } else if (type == FLOAT64) {
-            cur_block->insert(
-            it, rvconstructor->ConstructIImm(RISCV_FLD, reg, GetPhysicalReg(RISCV_sp), offset));    // insert load
+        switch(type.data_type) {
+            case MachineDataType::INT:
+                cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_LD, reg, GetPhysicalReg(RISCV_sp), offset));
+                break;
+            case MachineDataType::FLOAT:
+                cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_FLD, reg, GetPhysicalReg(RISCV_sp), offset));
+                break;
         }
     } else {
         auto imm_reg = function->GetNewRegister(INT64.data_type, INT64.data_length);
         auto offset_mid_reg = function->GetNewRegister(INT64.data_type, INT64.data_length);
         cur_block->insert(it, rvconstructor->ConstructUImm(RISCV_LI, imm_reg, offset));
         cur_block->insert(it, rvconstructor->ConstructR(RISCV_ADD, offset_mid_reg, GetPhysicalReg(RISCV_sp), imm_reg));
-        if (type == INT64) {
-            cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_LD, reg, offset_mid_reg, 0));
-        } else if (type == FLOAT64) {
-            cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_FLD, reg, offset_mid_reg, 0));
+        switch(type.data_type) {
+            case MachineDataType::INT:
+                cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_LD, reg, offset_mid_reg, 0));
+                break;
+            case MachineDataType::FLOAT:
+                cur_block->insert(it, rvconstructor->ConstructIImm(RISCV_FLD, reg, offset_mid_reg, 0));
+                break;
         }
     }
 }
 
+#include <list>
+#include <iterator>
+
+// 假设以下类型和常量已经定义
+// enum { PHI, RiscV };
+// enum { RISCV_JALR, RISCV_JAL };
+// struct RvOpInfo { enum FormatType { B_type }; };
+// extern RvOpInfo OpTable[];
+
+// 类定义及其它内容略……
+
 std::list<MachineBaseInstruction *>::iterator RiscV64Block::getInsertBeforeBrIt() {
-    auto it = --instructions.end();
-    auto jal_pos = it;
+    // 若指令序列为空，则直接返回end()迭代器
     if (instructions.empty()) {
         return instructions.end();
     }
-    for (auto it = --instructions.end(); it != --instructions.begin(); --it) {
-        if ((*it)->arch == MachineBaseInstruction::PHI) {
+
+    // 候选插入位置初始设定为最后一条指令的位置
+    auto candidate = std::prev(instructions.end());
+
+    // 使用反向迭代器从最后一条指令开始遍历
+    for (auto rit = instructions.rbegin(); rit != instructions.rend(); ++rit) {
+        MachineBaseInstruction* inst = *rit;
+
+        // 如果遇到 PHI 指令则跳过
+        if (inst->arch == MachineBaseInstruction::PHI) {
             continue;
         }
-        if ((*it)->arch != MachineBaseInstruction::RiscV) {
-            return jal_pos;
+
+        // 如果不是 RiscV 指令，直接返回当前的候选位置
+        if (inst->arch != MachineBaseInstruction::RiscV) {
+            return candidate;
         }
-        // Assert((*it)->arch == MachineBaseInstruction::RiscV);
-        auto rvlast = (RiscV64Instruction *)(*it);
-        if (rvlast->getOpcode() == RISCV_JALR) {
-            return it;
-        }
-        if (rvlast->getOpcode() == RISCV_JAL) {
-            jal_pos = it;
+
+        // 将指令转换为 RiscV64Instruction 类型，便于获取特定信息
+        auto* rvInst = dynamic_cast<RiscV64Instruction*>(inst);
+        if (!rvInst) {
+            // 如果转换失败，则跳过该指令
             continue;
         }
-        if (OpTable[rvlast->getOpcode()].ins_formattype == RvOpInfo::B_type) {
-            return it;
+
+        // 如果指令为 RISCV_JALR，则直接返回该位置
+        if (rvInst->getOpcode() == RISCV_JALR) {
+            // rit.base() 得到的是正向迭代器，实际对应的位置为 std::prev(rit.base())
+            return std::prev(rit.base());
+        }
+
+        // 如果指令为 RISCV_JAL，则更新候选位置
+        if (rvInst->getOpcode() == RISCV_JAL) {
+            candidate = std::prev(rit.base());
+            continue;
+        }
+
+        // 如果指令格式类型为 B_type，则返回该指令位置
+        if (OpTable[rvInst->getOpcode()].ins_formattype == RvOpInfo::B_type) {
+            return std::prev(rit.base());
         } else {
-            return jal_pos;
+            // 否则返回当前候选位置
+            return candidate;
         }
     }
-    return it;
+
+    // 遍历结束后，返回最新候选位置
+    return candidate;
 }
+

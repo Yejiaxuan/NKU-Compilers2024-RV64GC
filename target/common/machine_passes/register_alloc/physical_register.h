@@ -44,13 +44,13 @@ public:
     bool ReleaseReg(int phy_id, LiveInterval interval);
 
     // 将区间inteval分配到内存,返回是否成功
-    bool OccupyMem(int offset, int size, LiveInterval interval);
+    bool OccupyMem(int offset, LiveInterval interval);
     // 释放内存,返回是否成功
-    bool ReleaseMem(int offset, int size, LiveInterval interval);
+    bool ReleaseMem(int offset, LiveInterval interval);
 
     // 获取空闲的（活跃区间不冲突的）物理寄存器, 返回物理寄存器编号
-    int getIdleReg(LiveInterval interval, std::vector<int> preferd_regs,
-                                  std::vector<int> noprefer_regs);
+    int getIdleReg(LiveInterval interval);
+    
     // 获取空闲的（活跃区间不冲突的）内存, 返回栈上的offset
     int getIdleMem(LiveInterval interval);
 

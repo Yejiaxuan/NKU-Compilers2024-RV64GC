@@ -61,33 +61,31 @@ public:
         return reg == that.reg;    // && segments == that.segments;
     }
     LiveInterval operator|(const LiveInterval &that) const {
-        LiveInterval ret(this->reg);
-        ret.reference_count = this->reference_count + that.reference_count - 2;
-        auto it = segments.begin();
-        auto jt = that.segments.begin();
-        while (1) {
-            if (it == segments.end() && jt == that.segments.end()) {
-                break;
+        // 用当前对象的寄存器构造新的活跃区间
+        LiveInterval newInterval(this->reg);
+        // 更新引用计数（与原实现保持一致的计算方式）
+        newInterval.reference_count = this->reference_count + that.reference_count - 2;
+
+        // 将当前对象和 that 对象中的所有区间段拷贝到 vector 中
+        std::vector<LiveSegment> segVec1(segments.begin(), segments.end());
+        std::vector<LiveSegment> segVec2(that.segments.begin(), that.segments.end());
+    
+        // 使用 STL 的 merge 算法对两个有序区间段序列进行合并
+        std::vector<LiveSegment> mergedSegments;
+        mergedSegments.reserve(segVec1.size() + segVec2.size());
+        std::merge(segVec1.begin(), segVec1.end(), segVec2.begin(), segVec2.end(),
+            std::back_inserter(mergedSegments),
+            [](const LiveSegment &a, const LiveSegment &b) {
+                // 按 begin 排序，如果 begin 相同，则按照 end 排序
+                return (a.begin < b.begin) || (a.begin == b.begin && a.end < b.end);
             }
-            if (it == segments.end()) {
-                ret.segments.push_back(*jt);
-                ++jt;
-                continue;
-            }
-            if (jt == that.segments.end()) {
-                ret.segments.push_back(*it);
-                ++it;
-                continue;
-            }
-            if (it->begin < jt->begin) {
-                ret.segments.push_back(*it);
-                ++it;
-            } else {
-                ret.segments.push_back(*jt);
-                ++jt;
-            }
+        );
+    
+        // 将合并后的区间段重新存入新的活跃区间对象的链表中
+        for (const auto &seg : mergedSegments) {
+            newInterval.segments.push_back(seg);
         }
-        return ret;
+        return newInterval;
     }
 
     // 更新引用计数
