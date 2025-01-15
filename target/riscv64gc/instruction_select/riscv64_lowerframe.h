@@ -3,10 +3,15 @@
 
 #include "../riscv64.h"
 
+
 class RiscV64LowerFrame : public MachinePass {
 public:
     RiscV64LowerFrame(MachineUnit *unit) : MachinePass(unit) {}
     void Execute();
+
+private:
+
+    void HandleFunctionPrologue(MachineFunction *func);
 };
 
 class RiscV64LowerStack : public MachinePass {
@@ -15,4 +20,5 @@ public:
     void Execute();
 };
 
-#endif    // RISCV64_LOWERFRAME_H
+#endif // RISCV64_LOWERFRAME_H
+
