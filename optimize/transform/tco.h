@@ -9,8 +9,8 @@
 
 class TCOPass : public IRPass {
 private:    
-    void TailRecursionToLoop(CFG *cfg, FuncDefInstruction defI);
-    void ConvertTailRecursionToLoop(CFG *cfg, BasicBlock *block, CallInstruction *call_instr,FuncDefInstruction defI);
+    bool TailRecursiveEliminateCheck(CFG* C);
+    void TailRecursiveEliminate(CFG* C);
     void MakeFunctionOneExit(CFG* C);
     void RetMotion(CFG* C);
 
