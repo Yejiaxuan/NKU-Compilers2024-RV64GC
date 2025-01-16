@@ -118,3 +118,4 @@ std::vector<LiveInterval> PhysicalRegistersAllocTools::getConflictIntervals(Live
     }
     return result;
 }
+

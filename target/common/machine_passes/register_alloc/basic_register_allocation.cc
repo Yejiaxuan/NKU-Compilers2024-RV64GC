@@ -95,7 +95,7 @@ void InstructionNumber::ExecuteInFunc(MachineFunction *func) {
         }
     }
 }
-
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/target/common/machine_passes/register_alloc/basic_register_allocation.cc line72-line166
 void RegisterAllocation::UpdateIntervalsInCurrentFunc() {
     intervals.clear();
     copy_sources.clear();
@@ -176,4 +176,5 @@ void RegisterAllocation::UpdateIntervalsInCurrentFunc() {
         last_def.clear();
     }
 }
+
 

@@ -79,9 +79,9 @@ void SpillCodeGen::ExecuteInFunc(MachineFunction *function, std::map<Register, A
                 continue;
             }
             // 处理读寄存器
-            SpillRegisters(ins->GetReadReg(), it, /*isWrite=*/false);
+            SpillRegisters(ins->GetReadReg(), it, false);
             // 处理写寄存器
-            SpillRegisters(ins->GetWriteReg(), it, /*isWrite=*/true);
+            SpillRegisters(ins->GetWriteReg(), it, true);
         }
     }
 }
@@ -153,4 +153,3 @@ void SpillCodeGen::SpillRegisters(const std::vector<Register*>& regs,
         }
     }
 }
-

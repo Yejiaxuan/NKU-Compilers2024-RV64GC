@@ -56,7 +56,7 @@ void RiscV64LowerFrame::Execute() {
         HandleFunctionPrologue(func);
     }
 }
-
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/target/riscv64gc/instruction_select/riscv64_lowerframe.cc line132-line197
 void GatherUseSregs(MachineFunction *func, std::vector<std::vector<int>> &reg_defblockids,
                     std::vector<std::vector<int>> &reg_rwblockids) {
     reg_defblockids.resize(64);
@@ -131,16 +131,17 @@ void RiscV64LowerStack::Execute() {
     // TODO: 开辟和回收栈空间
     // 具体需要保存/恢复哪些可以查阅RISC-V函数调用约定
     for (auto func : unit->functions) {
-        current_func = func;
-        std::vector<std::vector<int>> saveregs_occurblockids, saveregs_rwblockids;
-        GatherUseSregs(func, saveregs_occurblockids, saveregs_rwblockids);
-        std::vector<int> sd_blocks;
-        std::vector<int> ld_blocks;
-        std::vector<int> restore_offset;
-        sd_blocks.resize(64);
-        ld_blocks.resize(64);
-        restore_offset.resize(64);
         int saveregnum = 0;
+        bool restore_at_beginning = true;
+        std::vector<std::vector<int>> saveregs_occurblockids, saveregs_rwblockids;
+        std::vector<int> sd_blocks;
+        sd_blocks.resize(64);
+        std::vector<int> ld_blocks;
+        ld_blocks.resize(64);
+        std::vector<int> restore_offset;
+        restore_offset.resize(64);
+        current_func = func;
+        GatherUseSregs(func, saveregs_occurblockids, saveregs_rwblockids);
         for (int i = 0; i < saveregs_occurblockids.size(); i++) {
             auto &vld = saveregs_rwblockids[i];
             if (!vld.empty()) {
@@ -149,15 +150,13 @@ void RiscV64LowerStack::Execute() {
         }
         func->AddStackSize(saveregnum * 8);
         auto mcfg = func->getMachineCFG();
-        bool restore_at_beginning = true; // Simplified for clarity
         for (auto &b : func->blocks) {
             cur_block = b;
             if (b->getLabelId() == 0) {
-                // Prologue: Adjust stack pointer
                 if (func->GetStackSize() <= 2032) {
                     b->push_front(rvconstructor->ConstructIImm(RISCV_ADDI, GetPhysicalReg(RISCV_sp),
                                                                GetPhysicalReg(RISCV_sp),
-                                                               -func->GetStackSize())); // sub sp
+                                                               -func->GetStackSize()));
                 } else {
                     auto stacksz_reg = GetPhysicalReg(RISCV_t0);
                     b->push_front(rvconstructor->ConstructR(RISCV_SUB, GetPhysicalReg(RISCV_sp),
@@ -185,7 +184,6 @@ void RiscV64LowerStack::Execute() {
                     }
                 }
             }
-            // Epilogue: Restore stack pointer and registers
             auto last_ins = *(b->ReverseBegin());
             Assert(last_ins->arch == MachineBaseInstruction::RiscV);
             auto riscv_last_ins = (RiscV64Instruction *)last_ins;
@@ -194,7 +192,6 @@ void RiscV64LowerStack::Execute() {
                     if (riscv_last_ins->getRs1() == GetPhysicalReg(RISCV_ra)) {
                         Assert(riscv_last_ins->getImm() == 0);
                         b->pop_back();
-                        // Adjust stack pointer
                         if (func->GetStackSize() <= 2032) {
                             b->push_back(rvconstructor->ConstructIImm(RISCV_ADDI, GetPhysicalReg(RISCV_sp),
                                                                       GetPhysicalReg(RISCV_sp), func->GetStackSize()));
@@ -204,7 +201,6 @@ void RiscV64LowerStack::Execute() {
                             b->push_back(rvconstructor->ConstructR(RISCV_ADD, GetPhysicalReg(RISCV_sp),
                                                                    GetPhysicalReg(RISCV_sp), stacksz_reg));
                         }
-                        // Restore registers
                         if (restore_at_beginning) {
                             int offset = 0;
                             for (int i = 0; i < 64; i++) {

@@ -141,4 +141,3 @@ void MachinePhiDestruction::PhiDestructionInCurrentFunction() {
         HandleParallelCopyList(block);
     }
 }
-

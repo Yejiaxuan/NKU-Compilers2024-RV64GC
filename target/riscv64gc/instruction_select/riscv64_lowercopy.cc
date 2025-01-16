@@ -75,7 +75,7 @@ void RiscV64LowerCopy::Execute() {
         }
     }
 }
-
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/target/riscv64gc/instruction_select/riscv64_lowercopy.cc line64-line173
 // 实现RiscV64LowerFImmCopy::Execute
 void RiscV64LowerFImmCopy::Execute() {
     for (auto function : unit->functions) {
@@ -161,4 +161,3 @@ void RiscV64LowerIImmCopy::Execute() {
         }
     }
 }
-

@@ -306,6 +306,8 @@ Register(false, RISCV_f25, FLOAT64), Register(false, RISCV_f26, FLOAT64), Regist
 Register(false, RISCV_f28, FLOAT64), Register(false, RISCV_f29, FLOAT64), Register(false, RISCV_f30, FLOAT64),
 Register(false, RISCV_f31, FLOAT64),
 };
+
+// Reference: https://github.com/yuhuifishash/SysY/blob/master/target/riscv64gc/riscv64.cc line328-line470
 // 获取可分配的寄存器列表（不考虑区间冲突）
 std::vector<int> RiscV64RegisterAllocTools::getValidRegs(LiveInterval interval) {
     if (interval.getReg().type.data_type == MachineDataType::INT) {
@@ -517,4 +519,5 @@ std::list<MachineBaseInstruction *>::iterator RiscV64Block::getInsertBeforeBrIt(
     // 遍历结束后，返回最新候选位置
     return candidate;
 }
+
 

@@ -208,7 +208,6 @@ int main(int argc, char **argv) {
 
         RiscV64LowerFrame(m_unit).Execute();
 
-        RiscV64AlgStrengthReduce(m_unit).Execute();
         RiscV64LowerImm(m_unit).Execute();
 
         MachinePhiDestruction(m_unit).Execute();
@@ -236,3 +235,4 @@ int main(int argc, char **argv) {
     fout.close();
     return 0;
 }
+
